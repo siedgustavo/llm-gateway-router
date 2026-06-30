@@ -5,16 +5,17 @@ como los clientes (Claude Code, qwen-code, opencode) piden los modelos y como el
 clasificador 'auto' los rutea. Sirve para ir ajustando el ruteo.
 
 Uso:
-  # local (si copiaste el jsonl):
-  python3 scripts/analyze-traffic.py /ruta/traffic.jsonl
-  # remoto (lee de airouter por ssh):
+  # resumen (default):
   ssh root@airouter.core.sied.ar 'cat /opt/llm-gateway-router/gateway/logs/traffic.jsonl' | python3 scripts/analyze-traffic.py -
+  # volcar los requests COMPLETOS de un modelo (para disenar el interceptor on-prem):
+  ssh ... 'cat .../traffic.jsonl' | python3 scripts/analyze-traffic.py - --dump claude-sonnet-4-6
 """
 import json
 import sys
 from collections import Counter, defaultdict
 
 TARGETS = {"llama3.1:8b", "agile-coder-ops", "system-architect", "qwen3-coder:30b", "qwen3.6:35b"}
+SKIP_PREFIXES = ("<system-reminder>", "<local-command-caveat>", "<command-")
 
 
 def load(path):
@@ -31,18 +32,52 @@ def load(path):
     return rows
 
 
-def first_user(messages):
+def real_user_prompt(messages):
+    """Ultimo mensaje user que no sea system-reminder/caveat (el pedido real)."""
+    best = ""
     for m in messages or []:
-        if m.get("role") == "user":
-            return (m.get("content") or "").replace("\n", " ")[:90]
-    return ""
+        if m.get("role") != "user":
+            continue
+        c = m.get("content") or ""
+        if not isinstance(c, str):
+            continue
+        stripped = c.lstrip()
+        if stripped.startswith(SKIP_PREFIXES):
+            continue
+        best = c  # nos quedamos con el ultimo que aplique
+    return best.replace("\n", " ")[:110]
+
+
+def dump_model(rows, model):
+    """Vuelca los requests completos de un modelo (JSON por request)."""
+    n = 0
+    for r in rows:
+        if r.get("requested_model") != model:
+            continue
+        n += 1
+        print(json.dumps({
+            "ts": r.get("ts"),
+            "status": r.get("status"),
+            "messages": r.get("messages"),
+            "response_text": r.get("response_text"),
+            "tool_calls": r.get("tool_calls"),
+            "usage": r.get("usage"),
+        }, ensure_ascii=False, indent=2))
+        print("=" * 80)
+    print(f"\n# {n} requests de {model}", file=sys.stderr)
 
 
 def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else "-"
+    args = [a for a in sys.argv[1:]]
+    path = args[0] if args else "-"
     rows = load(path)
     if not rows:
         print("Sin registros.")
+        return
+
+    if "--dump" in args:
+        model = args[args.index("--dump") + 1]
+        dump_model(rows, model)
         return
 
     by_model = Counter(r.get("requested_model") for r in rows)
@@ -69,13 +104,16 @@ def main():
             print(f"  {t:24} {n:4}")
 
     # Muestras de prompts por modelo, para evaluar si la clasificacion fue acertada.
-    print("\nEjemplos de prompts por modelo (revisar si el ruteo tiene sentido):")
+    print("\nEjemplos de pedido REAL por modelo (ultimo user, sin system-reminder):")
     seen = defaultdict(int)
     for r in rows:
         m = r.get("requested_model")
         if seen[m] < 3 and r.get("messages"):
-            seen[m] += 1
-            print(f"  [{m}] {first_user(r['messages'])}")
+            prompt = real_user_prompt(r["messages"])
+            if prompt:
+                seen[m] += 1
+                print(f"  [{m}] {prompt}")
+    print("\n(para ver requests completos de un modelo: --dump <modelo>)")
 
 
 if __name__ == "__main__":
