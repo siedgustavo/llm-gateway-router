@@ -55,6 +55,16 @@ model_list:
       timeout: 420
       stream_timeout: 420
 
+  # Modelo rapido SIN thinking para tareas triviales (titulos, resumenes cortos).
+  # Destino de la categoria TRIVIAL del clasificador. En el Ollama de aiworker.
+  - model_name: llama3.1:8b
+    litellm_params:
+      model: ollama_chat/llama3.1:8b
+      api_base: http://aiworker.core.sied.ar:11434
+      max_tokens: 4096
+      timeout: 120
+      stream_timeout: 120
+
   - model_name: bge-m3
     litellm_params:
       model: ollama/bge-m3:latest

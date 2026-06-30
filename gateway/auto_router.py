@@ -27,6 +27,7 @@ CLASSIFIER_MODEL = os.environ.get("CLASSIFIER_MODEL", "semantic-classifier")
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "system-architect")
 
 ROUTE_TO_MODEL = {
+    "TRIVIAL": "llama3.1:8b",          # rapido, sin thinking (titulos, resumenes cortos)
     "CODING_SIMPLE": "agile-coder-ops",
     "SYSADMIN_OPS": "agile-coder-ops",
     "ARQUITECTURA_COMPLEJA": "system-architect",
@@ -35,13 +36,14 @@ ROUTE_TO_MODEL = {
 
 CLASSIFIER_SYSTEM_PROMPT = """Clasifica el prompt del usuario en UNA categoria.
 Devuelve solo JSON valido con estas claves:
-{"label":"CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA|GENERALISTA","confidence":0.0,"reason":"texto breve"}
+{"label":"TRIVIAL|CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA|GENERALISTA","confidence":0.0,"reason":"texto breve"}
 
 Reglas (elegi la mas especifica que aplique):
+- TRIVIAL: tarea mecanica y corta que NO requiere razonamiento: generar un titulo, resumir en pocas palabras, dar formato, extraer un dato, clasificar/etiquetar, responder si/no. Salida breve.
 - CODING_SIMPLE: hay que escribir o editar codigo: funciones, tests, bugs acotados, refactors pequenos.
 - SYSADMIN_OPS: bash, Linux, Docker, Kubernetes, logs, redes, systemd, GPU ops, CI/CD operativo.
 - ARQUITECTURA_COMPLEJA: diseno de sistemas, migraciones grandes, refactors masivos, analisis de repos completos, algoritmos complejos, planes multi-etapa.
-- GENERALISTA: todo lo demas. Preguntas de conocimiento general, explicaciones conceptuales, definiciones, redaccion, traduccion, conversacion. NO involucra escribir codigo ni operar infraestructura.
+- GENERALISTA: conocimiento general, explicaciones conceptuales, definiciones, redaccion larga, traduccion, conversacion. NO involucra escribir codigo ni operar infraestructura.
 """
 
 app = FastAPI(title="llm-gateway auto-router")
