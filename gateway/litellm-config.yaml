@@ -1,27 +1,46 @@
 model_list:
   - model_name: agile-coder-ops
     litellm_params:
-      model: openai/llama3.1-fast
-      api_base: http://corsario.core.sied.ar:8000/v1
-      api_key: local-vllm
+      model: ollama_chat/qwen3-coder:30b
+      api_base: http://corsario.core.sied.ar:8000
+      max_tokens: 14336
       timeout: 180
       stream_timeout: 180
 
   - model_name: system-architect
     litellm_params:
-      model: ollama_chat/llama3.3:70b-instruct-q3_K_M
-      api_base: http://aiworker.core.sied.ar:11434
-      think: false
+      model: openai/qwen3.6:35b
+      api_base: http://aiworker.core.sied.ar:11434/v1
+      api_key: local-ollama
+      max_tokens: 16384
       timeout: 420
       stream_timeout: 420
 
   - model_name: semantic-classifier
     litellm_params:
-      model: openai/semantic-classifier
-      api_base: http://airouter.core.sied.ar:8000/v1
-      api_key: local-vllm
+      model: ollama_chat/qwen3:0.6b
+      api_base: http://ollama-memory:11434
+      think: false
       timeout: 60
       stream_timeout: 60
+
+  # Nombres reales de modelo, expuestos para seleccion manual en clientes (qwen-code).
+  # Apuntan a los mismos backends que los alias por rol de arriba.
+  - model_name: qwen3-coder:30b
+    litellm_params:
+      model: ollama_chat/qwen3-coder:30b
+      api_base: http://corsario.core.sied.ar:8000
+      max_tokens: 14336
+      timeout: 180
+      stream_timeout: 180
+
+  - model_name: qwen3.6:35b
+    litellm_params:
+      model: ollama_chat/qwen3.6:35b
+      api_base: http://aiworker.core.sied.ar:11434
+      max_tokens: 16384
+      timeout: 420
+      stream_timeout: 420
 
   - model_name: bge-m3
     litellm_params:
@@ -30,6 +49,7 @@ model_list:
       timeout: 60
 
 litellm_settings:
+  callbacks: ["callbacks.proxy_handler_instance"]
   drop_params: true
   set_verbose: false
   request_timeout: 420

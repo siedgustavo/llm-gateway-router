@@ -25,6 +25,7 @@ services:
       OTEL_SDK_DISABLED: "true"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
+      - ./callbacks.py:/app/callbacks.py:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,48 +34,24 @@ services:
     networks:
       - ai-core
 
-  semantic-classifier:
-    profiles: ["gpu-local-classifier"]
-    image: vllm/vllm-openai:latest
-    container_name: llm-gateway-semantic-classifier
+  auto-router:
+    image: python:3.12-slim
+    container_name: llm-gateway-auto-router
     restart: unless-stopped
-    ipc: host
     ports:
-      - "8000:8000"
+      - "4001:4001"
     environment:
-      HF_HOME: ${HF_HOME:-/models/huggingface}
-      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
-      HF_DATASETS_OFFLINE: ${HF_DATASETS_OFFLINE:-1}
-      VLLM_NO_USAGE_STATS: "1"
-      DO_NOT_TRACK: "1"
-      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      GATEWAY_URL: http://litellm:4000
+      GATEWAY_KEY: ${LITELLM_MASTER_KEY:-sk-local-gateway-router}
     volumes:
-      - ${HF_HOME_HOST:-/srv/models/huggingface}:${HF_HOME:-/models/huggingface}
+      - ./auto_router.py:/app/auto_router.py:ro
+    working_dir: /app
     command:
-      - ${CLASSIFIER_MODEL:-Qwen/Qwen3-0.6B}
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --served-model-name
-      - semantic-classifier
-      - --gpu-memory-utilization
-      - "0.45"
-      - --max-model-len
-      - "1024"
-      - --max-num-seqs
-      - "4"
-      - --max-num-batched-tokens
-      - "1024"
-      - --enforce-eager
-      - --trust-remote-code
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+      - sh
+      - -c
+      - "pip install --no-cache-dir fastapi uvicorn httpx >/dev/null 2>&1 && uvicorn auto_router:app --host 0.0.0.0 --port 4001"
+    depends_on:
+      - litellm
     networks:
       - ai-core
 
@@ -134,9 +111,10 @@ services:
       - "11434:11434"
     environment:
       OLLAMA_HOST: "0.0.0.0:11434"
-      OLLAMA_KEEP_ALIVE: "5m"
-      OLLAMA_MAX_LOADED_MODELS: "1"
-      OLLAMA_CONTEXT_LENGTH: "4096"
+      # Resident: bge-m3 (embeddings) + qwen3:0.6b (semantic-classifier).
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_CONTEXT_LENGTH: "8192"
       OLLAMA_FLASH_ATTENTION: "1"
       OLLAMA_KV_CACHE_TYPE: "q8_0"
       NVIDIA_VISIBLE_DEVICES: ${OLLAMA_MEMORY_NVIDIA_VISIBLE_DEVICES:-all}

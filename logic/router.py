@@ -3,23 +3,25 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 from typing import Iterable
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 
-class RouteLabel(StrEnum):
+class RouteLabel(str, Enum):
     CODING_SIMPLE = "CODING_SIMPLE"
     SYSADMIN_OPS = "SYSADMIN_OPS"
     ARQUITECTURA_COMPLEJA = "ARQUITECTURA_COMPLEJA"
+    GENERALISTA = "GENERALISTA"
 
 
 ROUTE_TO_MODEL = {
     RouteLabel.CODING_SIMPLE: "agile-coder-ops",
     RouteLabel.SYSADMIN_OPS: "agile-coder-ops",
     RouteLabel.ARQUITECTURA_COMPLEJA: "system-architect",
+    RouteLabel.GENERALISTA: "system-architect",
 }
 
 
@@ -31,14 +33,15 @@ class RouteDecision:
     reason: str
 
 
-CLASSIFIER_SYSTEM_PROMPT = """Clasifica prompts para una plataforma local Code & Ops.
+CLASSIFIER_SYSTEM_PROMPT = """Clasifica el prompt del usuario en UNA categoria.
 Devuelve solo JSON valido con estas claves:
-{"label":"CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA","confidence":0.0,"reason":"texto breve"}
+{"label":"CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA|GENERALISTA","confidence":0.0,"reason":"texto breve"}
 
-Reglas:
-- CODING_SIMPLE: editar codigo puntual, escribir funciones, tests, bugs acotados, refactors pequenos.
+Reglas (elegi la mas especifica que aplique):
+- CODING_SIMPLE: hay que escribir o editar codigo: funciones, tests, bugs acotados, refactors pequenos.
 - SYSADMIN_OPS: bash, Linux, Docker, Kubernetes, logs, redes, systemd, GPU ops, CI/CD operativo.
 - ARQUITECTURA_COMPLEJA: diseno de sistemas, migraciones grandes, refactors masivos, analisis de repos completos, algoritmos complejos, planes multi-etapa.
+- GENERALISTA: todo lo demas. Preguntas de conocimiento general, explicaciones conceptuales, definiciones, redaccion, traduccion, conversacion. NO involucra escribir codigo ni operar infraestructura.
 """
 
 

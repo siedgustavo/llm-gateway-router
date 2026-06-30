@@ -1,38 +1,29 @@
+name: ollama
+
+# Ollama backend for the aiworker node (system-architect). Owns both RTX 3090s.
+# Loads models on demand; runs qwen3.6:35b (MoE) for architecture/complex tasks.
+# Replaces the previous vLLM deployment. The live compose also lives at /opt/ollama.
 services:
-  vllm-system-architect:
-    image: vllm/vllm-openai:latest
-    container_name: aiworker-vllm-qwen3-coder-next
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
     restart: unless-stopped
-    ipc: host
     ports:
-      - "8000:8000"
+      - "11434:11434"
     environment:
-      HF_HOME: ${HF_HOME:-/models/huggingface}
-      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
-      HF_DATASETS_OFFLINE: ${HF_DATASETS_OFFLINE:-1}
-      VLLM_NO_USAGE_STATS: "1"
-      DO_NOT_TRACK: "1"
-      NCCL_DEBUG: WARN
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # Keep loaded models resident (no cold reloads between requests).
+      OLLAMA_KEEP_ALIVE: "-1"
+      # Worker + fast resident at the same time.
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      # Agents need >=64k context.
+      OLLAMA_CONTEXT_LENGTH: "65536"
+      # Flash attention + quantized KV cache so 64k fits compactly (near-lossless).
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: "q8_0"
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
     volumes:
-      - ${HF_HOME_HOST:-/srv/models/huggingface}:${HF_HOME:-/models/huggingface}:ro
-    command:
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --model
-      - ${MODEL_ID:-Qwen/Qwen3-Coder-Next}
-      - --served-model-name
-      - Qwen/Qwen3-Coder-Next
-      - --tensor-parallel-size
-      - "2"
-      - --gpu-memory-utilization
-      - "0.92"
-      - --max-model-len
-      - ${MAX_MODEL_LEN:-65536}
-      - --disable-log-requests
-      - --trust-remote-code
+      - ollama:/root/.ollama
     deploy:
       resources:
         reservations:
@@ -40,12 +31,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/models', timeout=5).read()"
-      interval: 30s
-      timeout: 10s
-      retries: 20
-      start_period: 180s
 
+volumes:
+  ollama:

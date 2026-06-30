@@ -20,14 +20,15 @@ Objetivos:
 Topologia objetivo original:
 
 - `root@airouter.core.sied.ar`: gateway, LiteLLM, Qdrant, DB de mem0, clasificador liviano `Qwen3-Coder-1.7B-Instruct`.
-- `gustavo@corsario.core.sied.ar`: worker agil con 2x RTX 3060, vLLM para coding y ops.
-- `root@aiworker.core.sied.ar`: worker arquitecto con 2x RTX 3090, vLLM TP=2 para tareas complejas. Tambien existe Ollama instalado y activo.
+- `gustavo@corsario.core.sied.ar`: worker agil con 2x RTX 3060, Ollama para coding y ops. (corsario es el host local donde corre Claude Code.)
+- `root@aiworker.core.sied.ar`: worker arquitecto con 2x RTX 3090, Ollama para tareas complejas.
 
-Decision operativa vigente:
+Decision operativa vigente (vLLM ERRADICADO 2026-06; Ollama en todos los nodos):
 
-- En `airouter`, la RTX A2000 de 6GB no sostiene `Qwen/Qwen3-1.7B` con vLLM 0.23.0: carga pesos pero falla por OOM durante warmup/cudagraph.
-- El clasificador local estable queda en `Qwen/Qwen3-0.6B`, servido como `semantic-classifier`, con `--max-model-len 1024`, `--max-num-seqs 4`, `--max-num-batched-tokens 1024`, `--gpu-memory-utilization 0.45` y `--enforce-eager`.
-- `system-architect` apunta al Ollama existente de `aiworker.core.sied.ar:11434` con `llama3.3:70b-instruct-q3_K_M`, no al puerto vLLM `8000`.
+- Backend unico: Ollama. vLLM retirado por mejor rendimiento sin NVLink (layer-split vs TP), separacion de `thinking`/content, y soporte GGUF de cualquier arquitectura.
+- El clasificador local es `qwen3:0.6b` en el Ollama de `airouter` (`ollama-memory:11434`), residente junto a `bge-m3`. Se invoca via `ollama_chat` con `think:false`.
+- `agile-coder-ops` apunta a `corsario.core.sied.ar:8000` (Ollama, `qwen3-coder:30b`). Qwen2.5-Coder NO sirve para tool calling; qwen3-coder si.
+- `system-architect` apunta al Ollama de `aiworker.core.sied.ar:11434` con `qwen3.6:35b`.
 - La memoria canonica no debe usar Qdrant de `aiworker`. El vector store de memoria vive en `airouter.core.sied.ar:6333`.
 - Claude Code MCP `mem0` fue reconfigurado en `/home/gustavo/.claude.json` para ejecutar `python3 /home/gustavo/repos/llm-gateway-router/mcp/memory_mcp_server.py`.
 - El MCP propio usa Qdrant de `airouter:6333` y Ollama de `airouter:11434`; ya no depende del repo externo `elvismdev/mem0-mcp-selfhosted`.
@@ -44,10 +45,10 @@ Modelos virtuales previstos:
 Estructura creada:
 
 - `README.md`: documentacion tecnica y despliegue.
-- `gateway/docker-compose.yml`: LiteLLM, Qdrant, Postgres, Redis y clasificador vLLM.
-- `gateway/litellm-config.yaml`: modelos virtuales y ruteo local.
-- `workers/corsario-worker1/docker-compose.yml`: vLLM previsto para worker agil.
-- `workers/aiworker-worker2/docker-compose.yml`: vLLM previsto para worker arquitecto TP=2.
+- `gateway/docker-compose.yml`: LiteLLM, Qdrant, Postgres, Redis y Ollama (embeddings + clasificador).
+- `gateway/litellm-config.yaml`: modelos virtuales y ruteo local (todos Ollama).
+- `workers/corsario-worker1/docker-compose.yml`: Ollama del worker agil.
+- `workers/aiworker-worker2/docker-compose.yml`: Ollama del worker arquitecto.
 - `logic/router.py`: clasificador semantico con fallback heuristico.
 - `logic/orchestrator.py`: orquestador con memoria, RAG y delegacion de modelo.
 - `logic/requirements.txt`: dependencias Python.

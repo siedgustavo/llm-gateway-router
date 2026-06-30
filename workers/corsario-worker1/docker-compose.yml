@@ -1,38 +1,28 @@
+name: ollama
+
+# Ollama backend for the corsario worker (agile-coder-ops). Owns both RTX 3060s.
+# Loads models on demand (incl. from Hugging Face via `ollama pull hf.co/...`).
+# Replaces the previous vLLM deployment.
 services:
-  vllm-coder-ops:
-    image: vllm/vllm-openai:latest
-    container_name: corsario-vllm-qwen3-coder-14b
+  ollama:
+    image: ollama/ollama:latest
+    container_name: corsario-ollama
     restart: unless-stopped
-    ipc: host
     ports:
-      - "8000:8000"
+      - "8000:11434"
     environment:
-      HF_HOME: ${HF_HOME:-/models/huggingface}
-      TRANSFORMERS_OFFLINE: ${TRANSFORMERS_OFFLINE:-1}
-      HF_DATASETS_OFFLINE: ${HF_DATASETS_OFFLINE:-1}
-      VLLM_NO_USAGE_STATS: "1"
-      DO_NOT_TRACK: "1"
-      NCCL_DEBUG: WARN
+      OLLAMA_HOST: "0.0.0.0:11434"
+      # Keep loaded models resident (no cold reloads between requests).
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      # Agents need a large context window.
+      OLLAMA_CONTEXT_LENGTH: "49152"
+      # Flash attention + quantized KV cache so the context fits compactly.
+      OLLAMA_FLASH_ATTENTION: "1"
+      OLLAMA_KV_CACHE_TYPE: "q8_0"
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
     volumes:
-      - ${HF_HOME_HOST:-/srv/models/huggingface}:${HF_HOME:-/models/huggingface}:ro
-    command:
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
-      - --model
-      - ${MODEL_ID:-Qwen/Qwen3-Coder-14B-Instruct}
-      - --served-model-name
-      - Qwen/Qwen3-Coder-14B-Instruct
-      - --gpu-memory-utilization
-      - "0.90"
-      - --tensor-parallel-size
-      - ${TENSOR_PARALLEL_SIZE:-2}
-      - --max-model-len
-      - ${MAX_MODEL_LEN:-32768}
-      - --disable-log-requests
-      - --trust-remote-code
+      - ollama:/root/.ollama
     deploy:
       resources:
         reservations:
@@ -43,9 +33,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/models', timeout=5).read()"
+        - "ollama ps >/dev/null 2>&1 || exit 1"
       interval: 30s
       timeout: 10s
-      retries: 20
-      start_period: 120s
+      retries: 10
+      start_period: 30s
 
+volumes:
+  ollama:
