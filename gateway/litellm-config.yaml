@@ -43,9 +43,12 @@ model_list:
       stream_timeout: 420
 
   # Ruteo automatico: delega en el auto-router (clasifica y reenvia al modelo destino).
+  # Provider hosted_vllm (OpenAI-compatible, solo /chat/completions) para evitar que
+  # LiteLLM use la Responses API (/v1/responses) al traducir Anthropic Messages -> el
+  # auto-router solo implementa /v1/chat/completions.
   - model_name: auto
     litellm_params:
-      model: openai/auto
+      model: hosted_vllm/auto
       api_base: http://auto-router:4001/v1
       api_key: local-auto
       max_tokens: 16384
