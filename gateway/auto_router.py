@@ -65,8 +65,18 @@ def _last_user_text(messages: list[dict]) -> str:
     return ""
 
 
-async def _classify(client: httpx.AsyncClient, prompt: str) -> str:
-    """Devuelve el model destino segun el clasificador (con fallback al default)."""
+# Modelo con tool calling al que se redirige cuando un request CON tools cae en TRIVIAL.
+# llama3.1:8b (TRIVIAL) no hace tool calling fiable -> los subagentes narran sin ejecutar.
+TRIVIAL_MODEL = "llama3.1:8b"
+TOOLS_FALLBACK_MODEL = "agile-coder-ops"
+
+
+async def _classify(client: httpx.AsyncClient, prompt: str, has_tools: bool = False) -> str:
+    """Devuelve el model destino segun el clasificador (con fallback al default).
+
+    Si el request trae tools (p. ej. un subagente de Claude Code), nunca se rutea al
+    modelo TRIVIAL: ese modelo chico no ejecuta herramientas y el agente solo narra.
+    """
     try:
         resp = await client.post(
             f"{GATEWAY_URL}/v1/chat/completions",
@@ -86,7 +96,10 @@ async def _classify(client: httpx.AsyncClient, prompt: str) -> str:
         content = resp.json()["choices"][0]["message"].get("content") or ""
         match = _LABEL_RE.search(content)
         if match:
-            return ROUTE_TO_MODEL.get(match.group(1), DEFAULT_MODEL)
+            target = ROUTE_TO_MODEL.get(match.group(1), DEFAULT_MODEL)
+            if has_tools and target == TRIVIAL_MODEL:
+                return TOOLS_FALLBACK_MODEL
+            return target
     except Exception:
         pass
     return DEFAULT_MODEL
@@ -102,8 +115,9 @@ async def chat_completions(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
 
+    has_tools = bool(body.get("tools"))
     async with httpx.AsyncClient() as client:
-        target = await _classify(client, _last_user_text(messages))
+        target = await _classify(client, _last_user_text(messages), has_tools=has_tools)
         body["model"] = target
 
         headers = {"Authorization": f"Bearer {GATEWAY_KEY}", "Content-Type": "application/json"}
