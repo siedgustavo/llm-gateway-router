@@ -23,9 +23,11 @@ services:
       UI_PASSWORD: ${LITELLM_UI_PASSWORD:-admin-local-change-me}
       NO_TELEMETRY: "true"
       OTEL_SDK_DISABLED: "true"
+      TRAFFIC_LOG: /app/logs/traffic.jsonl
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
       - ./callbacks.py:/app/callbacks.py:ro
+      - ./logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy

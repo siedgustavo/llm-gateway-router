@@ -42,14 +42,38 @@ model_list:
       timeout: 420
       stream_timeout: 420
 
+  # Ruteo automatico: delega en el auto-router (clasifica y reenvia al modelo destino).
+  - model_name: auto
+    litellm_params:
+      model: openai/auto
+      api_base: http://auto-router:4001/v1
+      api_key: local-auto
+      max_tokens: 16384
+      timeout: 420
+      stream_timeout: 420
+
   - model_name: bge-m3
     litellm_params:
       model: ollama/bge-m3:latest
       api_base: http://ollama-memory:11434
       timeout: 60
 
+  # Modelos Claude REALES de Anthropic (via OAuth de Claude Code, reenviado por LiteLLM).
+  # Usados como agente principal (Sonnet) y opcionalmente Opus. Nombres reales.
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: anthropic/claude-sonnet-4-6
+      timeout: 600
+      stream_timeout: 600
+
+  - model_name: claude-opus-4-8
+    litellm_params:
+      model: anthropic/claude-opus-4-8
+      timeout: 600
+      stream_timeout: 600
+
 litellm_settings:
-  callbacks: ["callbacks.proxy_handler_instance"]
+  callbacks: ["callbacks.proxy_handler_instance", "callbacks.traffic_logger"]
   drop_params: true
   set_verbose: false
   request_timeout: 420
@@ -69,6 +93,12 @@ litellm_settings:
     port: 6379
     namespace: litellm
     ttl: 3600
+  # Reenvia el header Authorization (OAuth de Claude Code) SOLO a los grupos Anthropic,
+  # para que Sonnet/Opus reales usen la suscripcion. Nunca a los modelos locales/Ollama.
+  model_group_settings:
+    forward_client_headers_to_llm_api:
+      - claude-sonnet-4-6
+      - claude-opus-4-8
 
 router_settings:
   routing_strategy: latency-based-routing
@@ -84,3 +114,5 @@ general_settings:
   database_url: os.environ/DATABASE_URL
   store_model_in_db: true
   disable_spend_logs: false
+  # No BYOK: el OAuth de Claude Code viaja como header reenviado (arriba), no como provider key.
+  forward_llm_provider_auth_headers: false
