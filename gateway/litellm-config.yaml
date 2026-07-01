@@ -1,17 +1,18 @@
 model_list:
+  # Coding/ops -> qwen3-coder:30b en aiworker (GPU dedicada, un modelo por GPU).
   - model_name: agile-coder-ops
     litellm_params:
       model: ollama_chat/qwen3-coder:30b
-      api_base: http://corsario.core.sied.ar:8000
+      api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 14336
-      timeout: 180
-      stream_timeout: 180
+      timeout: 300
+      stream_timeout: 300
 
+  # General/arquitectura -> qwen3.6-35B-A3B uncensored Q3 en aiworker (GPU dedicada).
   - model_name: system-architect
     litellm_params:
-      model: openai/qwen3.6:35b
-      api_base: http://aiworker.core.sied.ar:11434/v1
-      api_key: local-ollama
+      model: ollama_chat/qwen3.6-uncensored:iq3m
+      api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 16384
       timeout: 420
       stream_timeout: 420
@@ -29,41 +30,30 @@ model_list:
   - model_name: qwen3-coder:30b
     litellm_params:
       model: ollama_chat/qwen3-coder:30b
-      api_base: http://corsario.core.sied.ar:8000
+      api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 14336
-      timeout: 180
-      stream_timeout: 180
+      timeout: 300
+      stream_timeout: 300
 
-  - model_name: qwen3.6:35b
+  - model_name: qwen3.6-uncensored:iq3m
     litellm_params:
-      model: ollama_chat/qwen3.6:35b
+      model: ollama_chat/qwen3.6-uncensored:iq3m
       api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 16384
       timeout: 420
       stream_timeout: 420
 
-  # TEMPORAL: 'auto' apunta directo a qwen3-coder-next IQ4_XS (mas capaz para subagentes),
-  # salteando el clasificador. IQ4_XS (42.8GB) entra COMPLETO en los 48GB (sin offload).
-  # NO usar :latest (51GB) -> offload a RAM -> no camina.
-  # REVERSION (volver al clasificador): cambiar model/api_base/api_key a:
-  #   model: hosted_vllm/auto | api_base: http://auto-router:4001/v1 | api_key: local-auto
+  # Ruteo automatico: el auto-router (clasificador qwen3:0.6b) elige coding vs general
+  # y reenvia al destino (agile-coder-ops / system-architect), ambos en aiworker.
+  # Provider hosted_vllm para evitar la Responses API al traducir Anthropic Messages.
   - model_name: auto
     litellm_params:
-      model: ollama_chat/qwen3-coder-next:iq4xs
-      api_base: http://aiworker.core.sied.ar:11434
+      model: hosted_vllm/auto
+      api_base: http://auto-router:4001/v1
+      api_key: local-auto
       max_tokens: 16384
-      timeout: 900
-      stream_timeout: 900
-
-  # Modelo rapido SIN thinking para tareas triviales (titulos, resumenes cortos).
-  # Destino de la categoria TRIVIAL del clasificador. En el Ollama de aiworker.
-  - model_name: llama3.1:8b
-    litellm_params:
-      model: ollama_chat/llama3.1:8b
-      api_base: http://aiworker.core.sied.ar:11434
-      max_tokens: 4096
-      timeout: 120
-      stream_timeout: 120
+      timeout: 600
+      stream_timeout: 600
 
   - model_name: bge-m3
     litellm_params:

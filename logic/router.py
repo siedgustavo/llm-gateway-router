@@ -11,7 +11,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 class RouteLabel(str, Enum):
-    TRIVIAL = "TRIVIAL"
     CODING_SIMPLE = "CODING_SIMPLE"
     SYSADMIN_OPS = "SYSADMIN_OPS"
     ARQUITECTURA_COMPLEJA = "ARQUITECTURA_COMPLEJA"
@@ -19,7 +18,6 @@ class RouteLabel(str, Enum):
 
 
 ROUTE_TO_MODEL = {
-    RouteLabel.TRIVIAL: "llama3.1:8b",
     RouteLabel.CODING_SIMPLE: "agile-coder-ops",
     RouteLabel.SYSADMIN_OPS: "agile-coder-ops",
     RouteLabel.ARQUITECTURA_COMPLEJA: "system-architect",
@@ -37,14 +35,13 @@ class RouteDecision:
 
 CLASSIFIER_SYSTEM_PROMPT = """Clasifica el prompt del usuario en UNA categoria.
 Devuelve solo JSON valido con estas claves:
-{"label":"TRIVIAL|CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA|GENERALISTA","confidence":0.0,"reason":"texto breve"}
+{"label":"CODING_SIMPLE|SYSADMIN_OPS|ARQUITECTURA_COMPLEJA|GENERALISTA","confidence":0.0,"reason":"texto breve"}
 
 Reglas (elegi la mas especifica que aplique):
-- TRIVIAL: tarea mecanica y corta que NO requiere razonamiento: generar un titulo, resumir en pocas palabras, dar formato, extraer un dato, clasificar/etiquetar, responder si/no. Salida breve.
 - CODING_SIMPLE: hay que escribir o editar codigo: funciones, tests, bugs acotados, refactors pequenos.
 - SYSADMIN_OPS: bash, Linux, Docker, Kubernetes, logs, redes, systemd, GPU ops, CI/CD operativo.
 - ARQUITECTURA_COMPLEJA: diseno de sistemas, migraciones grandes, refactors masivos, analisis de repos completos, algoritmos complejos, planes multi-etapa.
-- GENERALISTA: conocimiento general, explicaciones conceptuales, definiciones, redaccion larga, traduccion, conversacion. NO involucra escribir codigo ni operar infraestructura.
+- GENERALISTA: todo lo demas. Conocimiento general, explicaciones, definiciones, redaccion, traduccion, conversacion, titulos/resumenes. NO involucra escribir codigo ni operar infraestructura.
 """
 
 
