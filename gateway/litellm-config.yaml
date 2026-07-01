@@ -42,18 +42,18 @@ model_list:
       timeout: 420
       stream_timeout: 420
 
-  # Ruteo automatico: delega en el auto-router (clasifica y reenvia al modelo destino).
-  # Provider hosted_vllm (OpenAI-compatible, solo /chat/completions) para evitar que
-  # LiteLLM use la Responses API (/v1/responses) al traducir Anthropic Messages -> el
-  # auto-router solo implementa /v1/chat/completions.
+  # TEMPORAL: 'auto' apunta directo a qwen3-coder-next:latest (mas capaz para subagentes),
+  # salteando el clasificador. coder-next (80B-A3B, 51GB) no entra en 48GB -> Ollama
+  # offloada a RAM (lento). Timeout alto por eso.
+  # REVERSION (volver al clasificador): cambiar model/api_base/api_key a:
+  #   model: hosted_vllm/auto | api_base: http://auto-router:4001/v1 | api_key: local-auto
   - model_name: auto
     litellm_params:
-      model: hosted_vllm/auto
-      api_base: http://auto-router:4001/v1
-      api_key: local-auto
+      model: ollama_chat/qwen3-coder-next:latest
+      api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 16384
-      timeout: 420
-      stream_timeout: 420
+      timeout: 900
+      stream_timeout: 900
 
   # Modelo rapido SIN thinking para tareas triviales (titulos, resumenes cortos).
   # Destino de la categoria TRIVIAL del clasificador. En el Ollama de aiworker.
