@@ -42,14 +42,14 @@ model_list:
       timeout: 420
       stream_timeout: 420
 
-  # TEMPORAL: 'auto' apunta directo a qwen3-coder-next:latest (mas capaz para subagentes),
-  # salteando el clasificador. coder-next (80B-A3B, 51GB) no entra en 48GB -> Ollama
-  # offloada a RAM (lento). Timeout alto por eso.
+  # TEMPORAL: 'auto' apunta directo a qwen3-coder-next IQ4_XS (mas capaz para subagentes),
+  # salteando el clasificador. IQ4_XS (42.8GB) entra COMPLETO en los 48GB (sin offload).
+  # NO usar :latest (51GB) -> offload a RAM -> no camina.
   # REVERSION (volver al clasificador): cambiar model/api_base/api_key a:
   #   model: hosted_vllm/auto | api_base: http://auto-router:4001/v1 | api_key: local-auto
   - model_name: auto
     litellm_params:
-      model: ollama_chat/qwen3-coder-next:latest
+      model: ollama_chat/qwen3-coder-next:iq4xs
       api_base: http://aiworker.core.sied.ar:11434
       max_tokens: 16384
       timeout: 900
