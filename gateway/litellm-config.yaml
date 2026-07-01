@@ -1,14 +1,14 @@
 model_list:
-  # Coding/ops -> qwen3-coder:30b en aiworker (GPU dedicada, un modelo por GPU).
+  # Coding/ops -> qwen3-coder:30b en ollama-gpu1 (GPU1 / 3090, :11435).
   - model_name: agile-coder-ops
     litellm_params:
       model: ollama_chat/qwen3-coder:30b
-      api_base: http://aiworker.core.sied.ar:11434
+      api_base: http://aiworker.core.sied.ar:11435
       max_tokens: 14336
       timeout: 300
       stream_timeout: 300
 
-  # General/arquitectura -> qwen3.6-35B-A3B uncensored Q3 en aiworker (GPU dedicada).
+  # General/arquitectura -> qwen3.6-uncensored:iq3m en ollama-gpu0 (GPU0 / 3090, :11434).
   - model_name: system-architect
     litellm_params:
       model: ollama_chat/qwen3.6-uncensored:iq3m
@@ -30,7 +30,7 @@ model_list:
   - model_name: qwen3-coder:30b
     litellm_params:
       model: ollama_chat/qwen3-coder:30b
-      api_base: http://aiworker.core.sied.ar:11434
+      api_base: http://aiworker.core.sied.ar:11435
       max_tokens: 14336
       timeout: 300
       stream_timeout: 300
@@ -42,6 +42,15 @@ model_list:
       max_tokens: 16384
       timeout: 420
       stream_timeout: 420
+
+  # Chatbots -> llama3.1:8b en ollama-gpu2 (GPU2 / 3060, :11436).
+  - model_name: llama3.1:8b
+    litellm_params:
+      model: ollama_chat/llama3.1:8b
+      api_base: http://aiworker.core.sied.ar:11436
+      max_tokens: 4096
+      timeout: 120
+      stream_timeout: 120
 
   # Ruteo automatico: el auto-router (clasificador qwen3:0.6b) elige coding vs general
   # y reenvia al destino (agile-coder-ops / system-architect), ambos en aiworker.
