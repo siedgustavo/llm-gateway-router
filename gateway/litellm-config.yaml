@@ -10,7 +10,7 @@ model_list:
       timeout: 300
       stream_timeout: 300
 
-  # General/arquitectura -> qwen3.6-uncensored en llama.cpp GPU1 (:8081).
+  # General/arquitectura -> qwen3.6 en llama.cpp GPU1 (:8081).
   - model_name: system-architect
     litellm_params:
       model: hosted_vllm/qwen3.6-uncensored.gguf
@@ -39,7 +39,7 @@ model_list:
       timeout: 300
       stream_timeout: 300
 
-  - model_name: qwen3.6-uncensored
+  - model_name: qwen3.6:35b
     litellm_params:
       model: hosted_vllm/qwen3.6-uncensored.gguf
       api_base: http://aiworker.core.sied.ar:8081/v1
@@ -48,8 +48,9 @@ model_list:
       timeout: 420
       stream_timeout: 420
 
-  # Chatbots -> llama3.1-pro en llama.cpp GPU2 (:8082).
-  - model_name: llama3.1-pro
+  # Chatbots -> llama3.1-pro.gguf en llama.cpp GPU2 (:8082). Nombre real expuesto
+  # como llama3.1:8b (no llama3.1-pro) para no romper integraciones existentes.
+  - model_name: llama3.1:8b
     litellm_params:
       model: hosted_vllm/llama3.1-pro.gguf
       api_base: http://aiworker.core.sied.ar:8082/v1
