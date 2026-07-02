@@ -1,18 +1,21 @@
 model_list:
-  # Coding/ops -> qwen3-coder:30b en ollama-gpu1 (GPU1 / 3090, :11435).
+  # Coding/ops -> qwen3coder-35b en llama.cpp GPU0 (:8080). Provider hosted_vllm
+  # (OpenAI-compat, solo chat/completions) para evitar la Responses API con Claude Code.
   - model_name: agile-coder-ops
     litellm_params:
-      model: ollama_chat/qwen3-coder:30b
-      api_base: http://aiworker.core.sied.ar:11435
+      model: hosted_vllm/qwen3coder-35b.gguf
+      api_base: http://aiworker.core.sied.ar:8080/v1
+      api_key: local-llamacpp
       max_tokens: 14336
       timeout: 300
       stream_timeout: 300
 
-  # General/arquitectura -> qwen3.6-uncensored:iq3m en ollama-gpu0 (GPU0 / 3090, :11434).
+  # General/arquitectura -> qwen3.6-uncensored en llama.cpp GPU1 (:8081).
   - model_name: system-architect
     litellm_params:
-      model: ollama_chat/qwen3.6-uncensored:iq3m
-      api_base: http://aiworker.core.sied.ar:11434
+      model: hosted_vllm/qwen3.6-uncensored.gguf
+      api_base: http://aiworker.core.sied.ar:8081/v1
+      api_key: local-llamacpp
       max_tokens: 16384
       timeout: 420
       stream_timeout: 420
@@ -26,28 +29,31 @@ model_list:
       stream_timeout: 60
 
   # Nombres reales de modelo, expuestos para seleccion manual en clientes (qwen-code).
-  # Apuntan a los mismos backends que los alias por rol de arriba.
-  - model_name: qwen3-coder:30b
+  # Apuntan a los mismos backends llama.cpp que los alias por rol de arriba.
+  - model_name: qwen3coder-35b
     litellm_params:
-      model: ollama_chat/qwen3-coder:30b
-      api_base: http://aiworker.core.sied.ar:11435
+      model: hosted_vllm/qwen3coder-35b.gguf
+      api_base: http://aiworker.core.sied.ar:8080/v1
+      api_key: local-llamacpp
       max_tokens: 14336
       timeout: 300
       stream_timeout: 300
 
-  - model_name: qwen3.6-uncensored:iq3m
+  - model_name: qwen3.6-uncensored
     litellm_params:
-      model: ollama_chat/qwen3.6-uncensored:iq3m
-      api_base: http://aiworker.core.sied.ar:11434
+      model: hosted_vllm/qwen3.6-uncensored.gguf
+      api_base: http://aiworker.core.sied.ar:8081/v1
+      api_key: local-llamacpp
       max_tokens: 16384
       timeout: 420
       stream_timeout: 420
 
-  # Chatbots -> llama3.1:8b en ollama-gpu2 (GPU2 / 3060, :11436).
-  - model_name: llama3.1:8b
+  # Chatbots -> llama3.1-pro en llama.cpp GPU2 (:8082).
+  - model_name: llama3.1-pro
     litellm_params:
-      model: ollama_chat/llama3.1:8b
-      api_base: http://aiworker.core.sied.ar:11436
+      model: hosted_vllm/llama3.1-pro.gguf
+      api_base: http://aiworker.core.sied.ar:8082/v1
+      api_key: local-llamacpp
       max_tokens: 4096
       timeout: 120
       stream_timeout: 120
