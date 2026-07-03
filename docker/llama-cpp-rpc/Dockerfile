@@ -41,14 +41,17 @@ RUN set -xe \
 RUN set -xe \
  && mkdir -pv /app/models
 
-# Copy compiled tools
-COPY --from=builder /app/llama.cpp/build/bin/*.so /usr/lib/x86_64-linux-gnu
-# Upstream renamed rpc-server -> ggml-rpc-server; keep the old name so existing
-# compose files (entrypoint: ["/app/rpc-server"]) don't need to change.
-COPY --from=builder /app/llama.cpp/build/bin/ggml-rpc-server ./rpc-server
-COPY --from=builder /app/llama.cpp/build/bin/llama-cli .
-COPY --from=builder /app/llama.cpp/build/bin/llama-embedding .
-COPY --from=builder /app/llama.cpp/build/bin/llama-server .
+# Copy compiled tools. Staged into /app/bin-src first because the RPC server
+# binary was renamed rpc-server -> ggml-rpc-server upstream at some point; this
+# handles EITHER name (old or new tags) so the same Dockerfile builds any
+# LLAMACPP_VERSION without edits.
+COPY --from=builder /app/llama.cpp/build/bin/ /app/bin-src/
+RUN set -xe \
+ && cp /app/bin-src/*.so /usr/lib/x86_64-linux-gnu/ \
+ && cp /app/bin-src/llama-cli /app/bin-src/llama-embedding /app/bin-src/llama-server . \
+ && if [ -f /app/bin-src/ggml-rpc-server ]; then cp /app/bin-src/ggml-rpc-server ./rpc-server; \
+    else cp /app/bin-src/rpc-server ./rpc-server; fi \
+ && rm -rf /app/bin-src
 
 # The dynamic linker looks for the versioned soname (libxxx.so.0); the build only
 # produces the unversioned libxxx.so. Symlink every lib generically so new shared

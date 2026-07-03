@@ -24,7 +24,10 @@ services:
       - "${QWEN3CODER_PORT:-8080}:8080"
 
   llama-qwen36-uncensored:
-    image: ${LLAMACPP_SERVER_IMAGE:-evilfreelancer/llama.cpp-rpc:latest}
+    # PINNED a b8857 (commit a6cc43c, ultimo "bueno" antes de la regresion CUDA
+    # de MoE en issue ggml-org/llama.cpp#24937 -- crashea con este modelo). Debe
+    # coincidir con la imagen del RPC backend (llamacpp-rpc-gpu1 en octoserver).
+    image: ghcr.io/siedgustavo/llama-cpp-rpc:b8857
     container_name: aiworker-llama-qwen36-uncensored
     restart: unless-stopped
     entrypoint: ["/bin/bash"]
