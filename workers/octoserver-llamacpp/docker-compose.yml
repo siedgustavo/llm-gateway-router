@@ -1,0 +1,188 @@
+services:
+  octofan-controller:
+    build: .
+    container_name: octofan-controller
+    privileged: true
+    gpus: all
+    restart: unless-stopped
+    environment:
+      OCTOFAN_CONFIG: /config/octofan.yaml
+      OCTOFAN_BIN: /opt/octofan/fan_controller_cli
+      # Set to "1" to try the stack without Octofan USB hardware.
+      OCTOFAN_MOCK: "${OCTOFAN_MOCK:-0}"
+    volumes:
+      - ./config:/config
+      - /dev/bus/usb:/dev/bus/usb
+      - /etc/hostname:/host/etc/hostname:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${OCTOFAN_CONTROLLER_PORT:-8000}:8000"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: octofan-prometheus
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - octofan-controller
+      - node-exporter
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.2
+    container_name: octofan-node-exporter
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: octofan-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: octofan
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
+  # ARQUITECTURA v5 (2026-07-03): llama.cpp corre DIRECTO en octoserver (GPUs locales,
+  # sin split RPC). --no-mmap evita depender del page cache del host (solo 7.4GB RAM)
+  # para leer GGUF de hasta 18GB -- lee/sube a VRAM tensor por tensor en vez de mmapear
+  # el archivo completo. Reemplaza a los 4 llamacpp-rpc-gpuN + los llama-server de
+  # aiworker.core.sied.ar (dado de baja).
+  llamacpp-qwen3coder:
+    image: ${LLAMACPP_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:latest-cuda}
+    container_name: octofan-llamacpp-qwen3coder
+    restart: unless-stopped
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - >
+        cd /usr/lib/x86_64-linux-gnu;
+        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
+          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
+        done;
+        exec /app/llama-server --host 0.0.0.0 --port 8080
+        --no-mmap
+        --cache-ram 0
+        --ctx-checkpoints 0
+        -m /models/${QWEN3CODER_GGUF:-qwen3coder-35b.gguf}
+        -ngl ${QWEN3CODER_GPU_LAYERS:-99}
+        --ctx-size ${QWEN3CODER_CTX_SIZE:-65536}
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${QWEN3CODER_GPU_DEVICE:-0}"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
+    ports:
+      - "${QWEN3CODER_PORT:-8080}:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${QWEN3CODER_GPU_DEVICE:-0}"]
+              capabilities: [gpu]
+
+  llamacpp-qwen36-uncensored:
+    # PINNED a b8857 (commit a6cc43c, ultimo "bueno" antes de la regresion CUDA de MoE
+    # en issue ggml-org/llama.cpp#24937 -- crashea con este modelo en Ampere). El bug
+    # es del kernel CUDA, no de RPC, asi que el pin sigue aplicando en local.
+    image: ${QWEN36_UNCENSORED_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:b8857-cuda}
+    container_name: octofan-llamacpp-qwen36-uncensored
+    restart: unless-stopped
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - >
+        cd /usr/lib/x86_64-linux-gnu;
+        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
+          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
+        done;
+        exec /app/llama-server --host 0.0.0.0 --port 8080
+        --no-mmap
+        --cache-ram 0
+        --ctx-checkpoints 0
+        --chat-template-kwargs '{"enable_thinking":false}'
+        -m /models/${QWEN36_UNCENSORED_GGUF:-qwen3.6-uncensored.gguf}
+        -ngl ${QWEN36_UNCENSORED_GPU_LAYERS:-99}
+        --ctx-size ${QWEN36_UNCENSORED_CTX_SIZE:-131072}
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${QWEN36_UNCENSORED_GPU_DEVICE:-1}"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
+    ports:
+      - "${QWEN36_UNCENSORED_PORT:-8081}:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${QWEN36_UNCENSORED_GPU_DEVICE:-1}"]
+              capabilities: [gpu]
+
+  llamacpp-llama31-pro:
+    image: ${LLAMACPP_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:latest-cuda}
+    container_name: octofan-llamacpp-llama31-pro
+    restart: unless-stopped
+    entrypoint: ["/bin/bash"]
+    command:
+      - -lc
+      - >
+        cd /usr/lib/x86_64-linux-gnu;
+        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
+          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
+        done;
+        exec /app/llama-server --host 0.0.0.0 --port 8080
+        --no-mmap
+        --cache-ram 0
+        --ctx-checkpoints 0
+        -m /models/${LLAMA31_PRO_GGUF:-llama31-pro.gguf}
+        -ngl ${LLAMA31_PRO_GPU_LAYERS:-99}
+        --ctx-size ${LLAMA31_PRO_CTX_SIZE:-8192}
+    environment:
+      NVIDIA_VISIBLE_DEVICES: "${LLAMA31_PRO_GPU_DEVICE:-2}"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
+    ports:
+      - "${LLAMA31_PRO_PORT:-8082}:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${LLAMA31_PRO_GPU_DEVICE:-2}"]
+              capabilities: [gpu]
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  default:
+    name: ${OCTOFAN_DOCKER_NETWORK:-octofan-ai}

@@ -1,0 +1,10 @@
+# Imagen propia de LiteLLM = upstream + callbacks.py horneado.
+# El litellm-config.yaml NO va aca: se monta como ConfigMap en k8s (editable sin rebuild).
+# callbacks.py SI va horneado (es codigo, referenciado en el config como callbacks.<x>).
+# LiteLLM agrega el directorio del --config (/app) a sys.path, por eso callbacks.py debe
+# vivir en /app/callbacks.py.
+FROM ghcr.io/berriai/litellm:main-latest
+
+COPY callbacks.py /app/callbacks.py
+
+# El entrypoint/CMD de args (--config /app/config.yaml ...) lo pone el Deployment de k8s.

@@ -41,6 +41,7 @@ services:
         exec /app/llama-server --host 0.0.0.0 --port 8080
         --cache-ram 0
         --ctx-checkpoints 0
+        --chat-template-kwargs '{"enable_thinking":false}'
         -m ${QWEN36_UNCENSORED_GGUF:-/models/qwen3.6-uncensored.gguf}
         -ngl ${QWEN36_UNCENSORED_GPU_LAYERS:-99}
         --ctx-size ${QWEN36_UNCENSORED_CTX_SIZE:-8192}
