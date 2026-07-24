@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 Analiza el JSONL de trafico del gateway (gateway/logs/traffic.jsonl) para entender
-como los clientes (Claude Code, qwen-code, opencode) piden los modelos y como el
+como los clientes (Claude Code, OpenCode) piden los modelos y como el
 clasificador 'auto' los rutea. Sirve para ir ajustando el ruteo.
 
 Uso:
   # resumen (default):
-  ssh root@airouter.core.sied.ar 'cat /opt/llm-gateway-router/gateway/logs/traffic.jsonl' | python3 scripts/analyze-traffic.py -
+  kubectl -n inference exec deploy/litellm -- cat /app/logs/traffic.jsonl | python3 scripts/analyze-traffic.py -
   # volcar los requests COMPLETOS de un modelo (para disenar el interceptor on-prem):
-  ssh ... 'cat .../traffic.jsonl' | python3 scripts/analyze-traffic.py - --dump claude-sonnet-4-6
+  kubectl -n inference exec deploy/litellm -- cat /app/logs/traffic.jsonl | python3 scripts/analyze-traffic.py - --dump claude-sonnet-5
 """
 import json
 import sys

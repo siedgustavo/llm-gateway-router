@@ -37,12 +37,13 @@ if [ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]; then
   echo "Advertencia: ANTHROPIC_AUTH_TOKEN esta seteado. El router espera que Claude Code maneje OAuth sin tokens exportados." >&2
 fi
 
-# Gateway central llm-gateway-router (airouter). Override con CLAUDE_ROUTER_GATEWAY.
-export ANTHROPIC_BASE_URL="${CLAUDE_ROUTER_GATEWAY:-http://airouter.core.sied.ar:4000}"
+# Gateway central llm-gateway-router (k8s, nodo gpu-worker1). Override con CLAUDE_ROUTER_GATEWAY.
+# Migrado a k8s 2026-07-24: el gateway ya no vive en airouter:4000 sino en el Ingress publico.
+export ANTHROPIC_BASE_URL="${CLAUDE_ROUTER_GATEWAY:-https://inference.apps.sied.ar}"
 export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer ${LITELLM_MASTER_KEY}"
 
 # Tiers -> nombres de modelo reales del gateway.
-export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-4-6"   # principal: Sonnet REAL
+export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5"     # principal: Sonnet REAL
 export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8"       # disponible si se elige a mano
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="auto"                 # local via clasificador
 export CLAUDE_CODE_SUBAGENT_MODEL="auto"                    # local via clasificador (clave del ahorro)

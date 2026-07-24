@@ -24,14 +24,14 @@ fi
 
 if ! curl -fsS --max-time 5 "${ANTHROPIC_BASE_URL}/health/liveliness" >/dev/null 2>&1; then
   echo "El gateway LiteLLM no responde en ${ANTHROPIC_BASE_URL}." >&2
-  echo "Verifica el stack: ssh root@airouter.core.sied.ar 'cd /opt/llm-gateway-router/gateway && docker compose ps'" >&2
+  echo "Verifica el stack: kubectl -n inference get pods" >&2
   exit 1
 fi
 
 echo "Claude Code routed mode:"
-echo "* Gateway: ${ANTHROPIC_BASE_URL} (llm-gateway-router / airouter)"
+echo "* Gateway: ${ANTHROPIC_BASE_URL} (llm-gateway-router / k8s gpu-worker1)"
 echo "* Auth: Claude Code OAuth/subscription, sin API key"
-echo "* Principal (Sonnet): claude-sonnet-4-6 (Anthropic REAL)"
+echo "* Principal (Sonnet): claude-sonnet-5 (Anthropic REAL)"
 echo "* Opus (a mano):      claude-opus-4-8  (Anthropic REAL)"
 echo "* Haiku + subagentes: auto -> clasificador local (qwen3-coder:30b / qwen3.6:35b)"
 echo ""
