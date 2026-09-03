@@ -1,0 +1,23 @@
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "llm-gateway-router searxng"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: ""
+  formats:
+    - html
+    - json
+
+server:
+  # El valor real vive en k8s-sied-ar/deployments/inference/k8s/searxng-settings.yml.
+  # No commitear secretos: completar solo para desarrollo local.
+  secret_key: "REPLACE-me-local-dev"
+  limiter: false
+  image_proxy: false
+
+ui:
+  static_use_hash: true

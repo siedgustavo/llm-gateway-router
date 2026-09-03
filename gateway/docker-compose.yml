@@ -57,6 +57,31 @@ services:
     networks:
       - ai-core
 
+  # Clasificador de permisos de auto-mode 100% local -- reemplaza el chequeo que
+  # Claude Code manda siempre a un modelo real de Anthropic. Ver docstring de
+  # permission_classifier.py para el detalle completo de las variantes/formato.
+  permission-classifier-router:
+    image: python:3.12-slim
+    container_name: llm-gateway-permission-classifier-router
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    environment:
+      GATEWAY_URL: http://litellm:4000
+      GATEWAY_KEY: ${LITELLM_MASTER_KEY:-sk-local-gateway-router}
+      PERMISSION_CLASSIFIER_MODEL: qwen2.5-coder:7b
+    volumes:
+      - ./permission_classifier.py:/app/permission_classifier.py:ro
+    working_dir: /app
+    command:
+      - sh
+      - -c
+      - "pip install --no-cache-dir fastapi uvicorn httpx >/dev/null 2>&1 && uvicorn permission_classifier:app --host 0.0.0.0 --port 4002"
+    depends_on:
+      - litellm
+    networks:
+      - ai-core
+
   qdrant:
     image: qdrant/qdrant:latest
     container_name: llm-gateway-qdrant
@@ -151,6 +176,38 @@ services:
       qdrant:
         condition: service_started
       ollama-memory:
+        condition: service_started
+    networks:
+      - ai-core
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: llm-gateway-searxng
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: http://airouter.core.sied.ar:8888/
+    networks:
+      - ai-core
+
+  searxng-mcp:
+    build:
+      context: ../mcp
+      dockerfile: Dockerfile
+      args:
+        SERVER_FILE: searxng_mcp_server_sse.py
+    container_name: llm-gateway-searxng-mcp
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      SEARXNG_URL: http://searxng:8080
+      PORT: "8086"
+    depends_on:
+      searxng:
         condition: service_started
     networks:
       - ai-core

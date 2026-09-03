@@ -23,16 +23,32 @@ Topologia objetivo original:
 - `gustavo@corsario.core.sied.ar`: worker agil con 2x RTX 3060, Ollama para coding y ops. (corsario es el host local donde corre Claude Code.)
 - `root@aiworker.core.sied.ar`: worker arquitecto con 2x RTX 3090, Ollama para tareas complejas.
 
-Decision operativa vigente (vLLM ERRADICADO 2026-06; Ollama en todos los nodos):
+Decision operativa vigente (actualizada 2026-09-02):
 
-- Backend unico: Ollama. vLLM retirado por mejor rendimiento sin NVLink (layer-split vs TP), separacion de `thinking`/content, y soporte GGUF de cualquier arquitectura.
-- El clasificador local es `qwen3:0.6b` en el Ollama de `airouter` (`ollama-memory:11434`), residente junto a `bge-m3`. Se invoca via `ollama_chat` con `think:false`.
-- `agile-coder-ops` apunta a `corsario.core.sied.ar:8000` (Ollama, `qwen3-coder:30b`). Qwen2.5-Coder NO sirve para tool calling; qwen3-coder si.
-- `system-architect` apunta al Ollama de `aiworker.core.sied.ar:11434` con `qwen3.6:35b`.
-- La memoria canonica no debe usar Qdrant de `aiworker`. El vector store de memoria vive en `airouter.core.sied.ar:6333`.
-- Claude Code MCP `mem0` fue reconfigurado en `/home/gustavo/.claude.json` para ejecutar `python3 /home/gustavo/repos/llm-gateway-router/mcp/memory_mcp_server.py`.
-- El MCP propio usa Qdrant de `airouter:6333` y Ollama de `airouter:11434`; ya no depende del repo externo `elvismdev/mem0-mcp-selfhosted`.
-- `airouter` tambien corre `llm-gateway-ollama-memory` en `:11434` para embeddings de memoria MCP. No usar Ollama de `aiworker` para memoria nueva.
+- TODO el stack del gateway corre en K3s namespace `inference` y esta gestionado por **Argo CD**
+  (GitOps, repo `git@github.com:siedgustavo/k8s-sied-ar.git`, clon local
+  `/home/gustavo/repos/k8s-sied-ar`, paths `deployments/inference/k8s/`). Las Applications tienen
+  `automated sync + selfHeal`: **nunca parchear recursos live con kubectl** porque Argo revierte.
+  Cambiar config = editar el YAML en ese repo, commitear y pushear. Excepcion operational:
+  `kubectl -n inference rollout restart deploy/<x>` para forzar recarga de un configmap ya
+  sincronizado (LiteLLM no hot-reload el `model_list`).
+- El gateway canonico es LiteLLM en `https://inference.apps.sied.ar` (Ingress del namespace
+  `inference`). Su config viva es `deployments/inference/k8s/litellm-config.yaml` en el repo
+  k8s-sied-ar; el `gateway/litellm-config.yaml` de este repo ya NO es la fuente canonica.
+- Ollama en `octoserver.core.sied.ar:11434` sirve los modelos de las RTX 3090;
+  `qwen3.8-flash-next` corre en llama.cpp dedicated en `octoserver:8091` (container `qwen38flash`).
+  Los antiguos llama.cpp `:8082/:8083` y el deepseek `:8084` ya no existen.
+- El clasificador local es `llama3.2:3b` en `ollama-memory:11434` (StatefulSet in-cluster), residente junto a `bge-m3`. Se invoca via `ollama_chat` con `format: json`.
+- `agile-coder-ops` apunta a `qwen3-coder-next:80b` en el Ollama de octoserver.
+- `system-architect` apunta a `qwen3.6:35b` en el Ollama de octoserver.
+- `qwen3.8-flash-next` (tope de gama, 262k ctx, reasoning) se publica como alias propio apuntando al llama.cpp dedicado de `octoserver:8091`.
+- El antiguo stack Docker de `airouter.core.sied.ar` (LiteLLM, Qdrant, Postgres, Redis, Ollama en
+  `:4000/:6333/:11434`) fue RETIRADO: ese host ya no resuelve DNS ni responde. Memoria, Qdrant,
+  Postgres, Redis y MCP viven ahora en pods del namespace `inference`
+  (`memory-mcp`, `qdrant-0`, `postgres-0`, `redis-0`, `ollama-memory-0`).
+- El MCP de memoria corre como deployment `memory-mcp` in-cluster y se expone por el Ingress MCP
+  del namespace `inference` (`mcp-ingress.yaml`). El servidor local `mcp/memory_mcp_server.py`
+  queda como herramienta de desarrollo.
 
 Modelos virtuales previstos:
 
@@ -42,16 +58,27 @@ Modelos virtuales previstos:
 
 ## Estado del repositorio
 
+> Nota 2026-09-02: este repo conserva el codigo de los componentes (routers, callbacks, MCP,
+> Dockerfiles, scripts) pero la config desplegada vive en k8s-sied-ar. `gateway/litellm-config.yaml`
+> es una COPIA de referencia sincronizada manualmente con el configmap del cluster.
+
 Estructura creada:
 
 - `README.md`: documentacion tecnica y despliegue.
-- `gateway/docker-compose.yml`: LiteLLM, Qdrant, Postgres, Redis y Ollama (embeddings + clasificador).
-- `gateway/litellm-config.yaml`: modelos virtuales y ruteo local (todos Ollama).
-- `workers/corsario-worker1/docker-compose.yml`: Ollama del worker agil.
-- `workers/aiworker-worker2/docker-compose.yml`: Ollama del worker arquitecto.
-- `logic/router.py`: clasificador semantico con fallback heuristico.
-- `logic/orchestrator.py`: orquestador con memoria, RAG y delegacion de modelo.
-- `logic/requirements.txt`: dependencias Python.
+- `gateway/litellm-config.yaml`: copia de referencia del catalogo desplegado (canonico en k8s-sied-ar).
+- `gateway/auto_router.py`: ruteo automatico `auto` (clasifica y elige agile-coder-ops/system-architect).
+- `gateway/permission_classifier.py`: clasificador de permisos local para auto-mode de Claude Code.
+- `gateway/callbacks.py`: callbacks de LiteLLM (sanitizador de requests, redirector a permission-classifier, traffic logger).
+- `gateway/Dockerfile.*`: imagenes propias de litellm, auto-router y permission-classifier (build con `scripts/build-images.sh`).
+- `gateway/searxng/settings.yml`: config de SearXNG desplegada en el namespace `inference`.
+- `mcp/`: servidor MCP de memoria (stdio y SSE) + MCP SSE de SearXNG.
+- `docker/llama-cpp-rpc/`: build propio de llama.cpp-rpc (fix grammar con muchas tools).
+- `workers/octoserver-llamacpp/`: stack llama.cpp del host octoserver (fuera de k8s).
+- `workers/aiworker-llamacpp/`, `workers/corsario-worker1/`, `workers/aiworker-worker2/`: stacks historicos de workers.
+- `scripts/`: `claude-routed.sh` / `claude-routed-env.sh` (lanzar Claude Code contra el gateway),
+  `analyze-traffic.py` (analisis del traffic.jsonl), `build-images.sh`.
+- `logic/`: router.py, orchestrator.py, rag_manager.py (orquestador Python original, superseded por el auto-router in-cluster).
+- `.claude/skills/permission-classifier-log-review/`: skill de auditoria del clasificador de permisos.
 
 Validaciones ya corridas:
 
@@ -64,7 +91,32 @@ Validaciones ya corridas:
 
 Fecha del relevamiento: 2026-06-29.
 
+Actualizacion 2026-07-24:
+
+- El equipo que operaba como `aiworker.core.sied.ar` en `172.16.1.39` fue reconvertido
+  por decision operativa en `gpu-worker2.k8s.sied.ar`, IP `172.16.1.15`.
+- Ahora tiene 2x RTX 3060 de 12 GiB y se unio al cluster K3s como agente
+  `v1.31.5+k3s1`, con labels `sied.ar/gpu=true` y
+  `sied.ar/role=inference-worker-3060`.
+- Kubernetes publica `2` recursos `nvidia.com/gpu`; runtime NVIDIA, plugin,
+  Longhorn/iSCSI y un pod de prueba con ambas GPUs fueron validados.
+- Docker, el containerd del sistema y los directorios de los stacks heredados fueron
+  eliminados. K3s conserva su containerd embebido y `nvidia-container-toolkit`.
+- La inferencia de las RTX 3060 fue migrada al namespace `inference`: los StatefulSets
+  `llamacpp-llama31-pro` (`llama3.1:8b`) y
+  `llamacpp-permission-classifier` (`qwen2.5-coder:7b`) consumen una GPU cada uno.
+- Cada modelo usa un PVC `longhorn-inference` de tres replicas con
+  `dataLocality: best-effort`: una replica local en `gpu-worker2` y dos remotas.
+- LiteLLM consume ambos backends por Services internos y se valido inferencia end-to-end.
+- `172.16.1.39` dejo de pertenecer a ese host. Las secciones historicas de
+  `aiworker.core.sied.ar` mas abajo describen el estado anterior a la reconversion
+  y no deben usarse como inventario vigente.
+
 ### airouter.core.sied.ar
+
+> HISTORICO (2026-09-02): este host fue RETIRADO. Ya no resuelve DNS ni responde.
+> La seccion de abajo describe el estado al relevamiento original y no debe usarse
+> como inventario vigente. Los reemplazos viven en el namespace `inference` de K3s.
 
 Acceso:
 
@@ -323,44 +375,37 @@ Riesgos:
 
 ## Decisiones operativas actuales
 
-- No destruir ni reiniciar contenedores existentes sin confirmacion explicita.
-- Tratar `aiworker` como host con servicios productivos ya activos.
-- Tratar `corsario` como worker vLLM existente, pero su modelo real actual es `llama3.1-fast`, no `Qwen/Qwen3-Coder-14B-Instruct`.
-- Tratar `airouter` como gateway canonical ya activo para LiteLLM/Qdrant/Postgres/Redis.
-- Tratar `airouter` como memoria canonical para MCP/mem0. No apuntar clientes nuevos al Qdrant de `aiworker`.
-- La GPU de `airouter` esta operativa y el `semantic-classifier` local esta activo.
+- La plataforma canonica corre en K3s, namespace `inference`, administrada por GitOps desde
+  `/home/gustavo/repos/k8s-sied-ar/deployments/inference`. Todo cambio (LiteLLM, routers, MCP,
+  netpol, ingress) se hace editando el YAML de ese repo y pusheando: Argo CD hace sync automatico
+  con `selfHeal` y revierte cualquier `kubectl apply/edit` manual sobre los recursos live.
+- No volver a instalar Docker ni containerd del sistema en `gpu-worker2`; K3s usa su
+  containerd embebido. No eliminar `nvidia-container-toolkit`.
+- `gpu-worker2` ejecuta exclusivamente la inferencia correspondiente a sus 2x RTX 3060.
+  `llama3.1:8b` y `qwen2.5-coder:7b` se consumen mediante Services internos.
+- Los GGUF usan PVC `longhorn-inference`, tres replicas y
+  `dataLocality: best-effort`. Mantener el `nodeSelector`
+  `sied.ar/role=inference-worker-3060` para conservar una replica local junto al lector.
+- No aplicar `limits.memory` a los servidores llama.cpp de `gpu-worker2`. Mantener solo la
+  reserva de memoria para scheduling y el limite de una GPU por pod; este worker dispone de
+  mucha mas RAM que octoserver.
+- `qwen2.5-coder:7b` es solo el backend interno de `permission-classifier-router`; no
+  publicarlo como perfil de chat. El router lo consume directamente por el Service
+  `llamacpp-permission-classifier`.
+- `llama3.1:8b` debe recibir requests sin `tools`: con varias herramientas disponibles ese
+  fine-tune llama funciones innecesariamente incluso ante saludos. Para agentes con tools
+  usar `auto` o `qwen3-coder-next:80b`.
+- La antigua identidad `aiworker.core.sied.ar`/`172.16.1.39` y sus stacks Docker son
+  inventario historico, no un backend operativo.
+- Queda pendiente incorporar un nodo con rol `inference-worker-3090` para migrar los
+  modelos que requieren RTX 3090.
 - Mantener secretos fuera del repositorio. Usar `.env` locales no versionados para master keys, tokens y passwords.
 
-## Plan recomendado de puesta a punto
+## Proximos pasos
 
-1. Corregir `airouter`.
-   - Completado: Secure Boot desactivado, driver NVIDIA cargado, Docker GPU validado, firewall deshabilitado, `open-vm-tools` activo.
-   - Completado: `semantic-classifier` local con profile `gpu-local-classifier`.
-
-2. Decidir convivencia con servicios existentes.
-   - `aiworker` ya corre LiteLLM/Qdrant/Ollama; no usar su Qdrant para memoria nueva.
-   - Si `airouter` pasa a ser gateway canonical, migrar config de `claude-router` o exponer compatibilidad.
-   - Si se mantiene `aiworker` como router temporal, actualizar este repo para reflejar la realidad.
-
-3. Normalizar workers.
-   - En `corsario`, decidir si se reemplaza `llama3.1-fast` por `Qwen/Qwen3-Coder-14B-Instruct` o si se registra `llama3.1-fast` como backend temporal de `agile-coder-ops`.
-   - En `aiworker`, decidir ventana horaria para liberar Ollama y probar vLLM TP=2.
-
-4. Activar memoria/RAG.
-   - Usar exclusivamente Qdrant en `airouter`.
-   - Definir colecciones:
-     - `llm_gateway_context` para RAG.
-     - `mem0_user_memory` para memoria de usuario.
-     - `mem0_mcp_selfhosted` para memoria MCP compatible con `mem0-mcp-selfhosted`.
-   - Completado: embeddings/extraccion de mem0 MCP tambien corren en `airouter` via `llm-gateway-ollama-memory`.
-
-5. Validar end-to-end.
-   - `/v1/models` de cada backend.
-   - Clasificacion semantica.
-   - RAG con documento de prueba.
-   - Memoria mem0 con preferencia simple.
-   - Delegacion `CODING_SIMPLE`/`SYSADMIN_OPS` a worker agil.
-   - Delegacion `ARQUITECTURA_COMPLEJA` a worker arquitecto.
+1. Incorporar y etiquetar el worker con las RTX 3090.
+2. Crear sus StatefulSets/PVC Longhorn y migrar los modelos grandes aun externos.
+3. Revalidar el ruteo completo y retirar los endpoints externos restantes.
 
 ## Comandos utiles
 
@@ -370,18 +415,12 @@ Relevar vLLM en `corsario`:
 ssh -o UserKnownHostsFile=/tmp/corsario_known_hosts -o StrictHostKeyChecking=accept-new gustavo@corsario.core.sied.ar 'curl -sS http://127.0.0.1:8000/v1/models'
 ```
 
-Relevar Ollama en `aiworker`:
+Relevar el worker 3060:
 
 ```bash
-ssh root@aiworker.core.sied.ar 'docker exec ollama ollama ps && docker exec ollama ollama list'
-```
-
-Relevar GPU:
-
-```bash
-ssh gustavo@corsario.core.sied.ar 'nvidia-smi'
-ssh root@aiworker.core.sied.ar 'nvidia-smi'
-ssh root@airouter.core.sied.ar 'nvidia-smi || ls -l /dev/nvidia*'
+ssh root@172.16.1.15 'nvidia-smi; systemctl is-active k3s-agent'
+kubectl -n inference get pods -o wide
+kubectl -n longhorn-system get volumes.longhorn.io
 ```
 
 Validar Compose local del repo:

@@ -1,14 +1,19 @@
 """
 LiteLLM callbacks para el gateway llm-gateway-router.
 
-- MaxTokensCapper.async_pre_call_hook: capa el max_tokens de salida para que los
-  clientes (qwen-code manda 32000 hardcodeado) no excedan el contexto.
+- ProxyRequestSanitizer.async_pre_call_hook: capa el max_tokens de salida y quita
+  tools de modelos publicados solo como chat.
+- PermissionClassifierRedirector.async_pre_call_hook: redirige las llamadas del
+  clasificador de permisos de auto-mode de Claude Code (hardcoded a un modelo real de
+  Anthropic, no configurable via ANTHROPIC_DEFAULT_HAIKU_MODEL) a un modelo local, para
+  no gastar cuota de suscripcion en cada chequeo de permiso durante tareas largas de
+  claude-routed. Ver docstring de la clase para el detalle y la advertencia de seguridad.
 - TrafficLogger.async_log_success_event / async_log_failure_event: persiste cada
   request+response en JSONL para analizar despues el ruteo y afinar el clasificador.
 
-Ambos se registran en litellm-config.yaml:
+Se registran en litellm-config.yaml:
   litellm_settings:
-    callbacks: ["callbacks.proxy_handler_instance", "callbacks.traffic_logger"]
+    callbacks: ["callbacks.proxy_handler_instance", "callbacks.permission_classifier_redirector", "callbacks.traffic_logger"]
 """
 import json
 import os
@@ -17,6 +22,8 @@ from datetime import datetime, timezone
 from litellm.integrations.custom_logger import CustomLogger
 
 MAX_OUTPUT_TOKENS = 14336
+NO_TOOL_MODELS = {"llama3.1:8b"}
+TOOL_PARAMS = ("tools", "tool_choice", "parallel_tool_calls", "functions", "function_call")
 
 # Captura de trafico
 TRAFFIC_LOG = os.environ.get("TRAFFIC_LOG", "/app/logs/traffic.jsonl")
@@ -24,12 +31,94 @@ TRAFFIC_LOG = os.environ.get("TRAFFIC_LOG", "/app/logs/traffic.jsonl")
 TRAFFIC_MAX_CHARS = int(os.environ.get("TRAFFIC_MAX_CHARS", "0"))
 
 
-class MaxTokensCapper(CustomLogger):
-    """Capa max_tokens antes de reenviar al backend."""
+class ProxyRequestSanitizer(CustomLogger):
+    """Normaliza parametros antes de reenviar al backend."""
 
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
         if data.get("max_tokens", 0) > MAX_OUTPUT_TOKENS:
             data["max_tokens"] = MAX_OUTPUT_TOKENS
+        if data.get("model") in NO_TOOL_MODELS:
+            for param in TOOL_PARAMS:
+                data.pop(param, None)
+        return data
+
+    async def async_post_call_success_hook(self, *args, **kwargs):
+        pass
+
+    async def async_post_call_failure_hook(self, *args, **kwargs):
+        pass
+
+    def log_success_event(self, *args, **kwargs):
+        pass
+
+    def log_failure_event(self, *args, **kwargs):
+        pass
+
+
+# Texto ancla del prompt del clasificador de permisos de auto-mode de Claude Code
+# (confirmado mirando gateway/logs/traffic.jsonl real: siempre llega como model=
+# claude-sonnet-5/claude-opus-4-8, msgs=2, con este texto en el primer mensaje).
+# Cubre las 5 variantes reales encontradas (severity fast/thinking, block fast/
+# thinking, revision de lote de subagente) -- todas comparten este preambulo.
+PERMISSION_CLASSIFIER_MARKER = "SPECIFIC action under review"
+PERMISSION_CLASSIFIER_SOURCE_MODELS = {"claude-sonnet-5", "claude-opus-4-8"}
+PERMISSION_CLASSIFIER_TARGET_MODEL = "permission-classifier"
+
+
+def _looks_like_permission_classifier(messages) -> bool:
+    for m in messages or []:
+        content = m.get("content", "")
+        if isinstance(content, list):  # formato multimodal -> texto concatenado
+            content = " ".join(
+                p.get("text", "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            )
+        if isinstance(content, str) and PERMISSION_CLASSIFIER_MARKER in content:
+            return True
+    return False
+
+
+class PermissionClassifierRedirector(CustomLogger):
+    """Redirige el clasificador de permisos de auto-mode al microservicio local
+    dedicado `permission-classifier` (gateway/permission_classifier.py).
+
+    Claude Code manda esta verificacion (decide si te deja ejecutar acciones riesgosas:
+    borrar archivos, git push --force, comandos destructivos, etc.) siempre a un modelo
+    real de Anthropic, ignorando ANTHROPIC_DEFAULT_HAIKU_MODEL -- parece deliberado (un
+    modelo no editable por el usuario para esta decision). En tareas largas de
+    claude-routed dispara muchas veces por sesion y consume cuota de suscripcion.
+
+    Historia (2026-07-19, ver memoria del proyecto para el detalle completo): 3
+    intentos de redirigir DIRECTO a un modelo local fallaron -- qwen3.6:35b puntuaba
+    severity ~10x mas alto que Sonnet para el mismo contenido (bloqueaba de mas,
+    reportado en vivo: "no deja hacer nada al agente"), llama3.1:8b alucinaba
+    categorias sin relacion con la accion real, qwen3-coder-next:80b con el prompt
+    ORIGINAL de Anthropic no discriminaba nada (todo severity=3). La solucion real
+    no fue "otro modelo", fue reconocer que el pipeline de Claude Code tiene 5+
+    variantes distintas de este chequeo (severity/block, fast/thinking, accion unica/
+    lote de subagente) y que un modelo de CODIGO con una taxonomia PROPIA de riesgo
+    devops + ejemplos trabajados por categoria (no alcanza con la regla en texto
+    sola) discrimina bien -- 14/14 en control sintetico Y validado contra 5
+    transcripts reales completos (con y sin una accion destructiva insertada). Ver
+    permission_classifier.py para el detalle de deteccion de variante, taxonomia y
+    traduccion del veredicto al formato de tags exacto que cada variante espera.
+
+    ADVERTENCIA DE SEGURIDAD (decision consciente del usuario, 2026-07): un modelo local
+    es menos confiable que el Sonnet real de Anthropic para esta decision especifica --
+    baja el nivel de escrutinio de la capa que aprueba acciones peligrosas. Se elige
+    qwen2.5-coder:7b (no abliterated) a proposito, nunca un modelo uncensored, para no
+    reemplazar el guardia de seguridad por un modelo disenado para no decir que no. Si
+    el microservicio local falla o no responde, permission_classifier.py cae a
+    "unsafe"/"<block>" por diseno (fail-safe, mismo comportamiento que Claude Code ya
+    tiene para "classifier unavailable") -- nunca allow por default.
+    """
+
+    async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
+        if data.get("model") in PERMISSION_CLASSIFIER_SOURCE_MODELS and _looks_like_permission_classifier(
+            data.get("messages")
+        ):
+            data["model"] = PERMISSION_CLASSIFIER_TARGET_MODEL
         return data
 
     async def async_post_call_success_hook(self, *args, **kwargs):
@@ -148,5 +237,6 @@ class TrafficLogger(CustomLogger):
             pass
 
 
-proxy_handler_instance = MaxTokensCapper()
+proxy_handler_instance = ProxyRequestSanitizer()
+permission_classifier_redirector = PermissionClassifierRedirector()
 traffic_logger = TrafficLogger()

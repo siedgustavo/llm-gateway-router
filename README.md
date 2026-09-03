@@ -18,10 +18,10 @@ LiteLLM expone tres nombres estables (todos servidos por Ollama):
 
 | Modelo virtual | Backend | Modelo Ollama | Uso |
 | --- | --- | --- | --- |
-| `semantic-classifier` | `airouter` (ollama-memory `:11434`) | `qwen3:0.6b` (`think:false`) | Clasificacion de intencion entre coding simple, sysadmin y arquitectura compleja |
-| `agile-coder-ops` | `corsario.core.sied.ar:8000` | `qwen3-coder:30b` | Implementacion diaria, correcciones, pruebas, comandos operativos y diagnostico |
-| `system-architect` | `aiworker.core.sied.ar:11434` | `qwen3.6:35b` | Diseno de sistemas, planes de migracion, refactors masivos, decisiones de arquitectura y consultas generalistas |
-| `auto` | `airouter.core.sied.ar:4001` | (clasifica y rutea) | Ruteo automatico: clasifica el prompt y lo manda al coder o al arquitecto segun corresponda |
+| `semantic-classifier` | K3s (`ollama-memory:11434`) | `llama3.2:3b` (`format: json`) | Clasificacion de intencion entre coding simple, sysadmin y arquitectura compleja |
+| `agile-coder-ops` | `octoserver.core.sied.ar:11434` | `qwen3-coder-next:80b` | Implementacion diaria, correcciones, pruebas, comandos operativos y diagnostico |
+| `system-architect` | `octoserver.core.sied.ar:11434` | `qwen3.6:35b` | Diseno de sistemas, planes de migracion, refactors masivos, decisiones de arquitectura y consultas generalistas |
+| `auto` | K3s (`auto-router:4001`) | (clasifica y rutea) | Ruteo automatico: clasifica el prompt y lo manda al coder o al arquitecto segun corresponda |
 
 ### Ruteo automatico (`auto`)
 
@@ -29,10 +29,10 @@ El servicio `auto-router` (`gateway/auto_router.py`, contenedor `llm-gateway-aut
 
 | Categoria | Destino |
 | --- | --- |
-| `CODING_SIMPLE`, `SYSADMIN_OPS` | `agile-coder-ops` (coder en corsario) |
-| `ARQUITECTURA_COMPLEJA`, `GENERALISTA` | `system-architect` (qwen3.6 en aiworker) |
+| `CODING_SIMPLE`, `SYSADMIN_OPS` | `agile-coder-ops` (`qwen3-coder-next:80b` en octoserver) |
+| `ARQUITECTURA_COMPLEJA`, `GENERALISTA` | `system-architect` (`qwen3.6:35b` en octoserver) |
 
-En qwen-code conviven los tres: `agile-coder-ops` y `system-architect` para forzar un modelo a mano, y `auto` para dejar que el clasificador decida.
+En Claude Code y OpenCode conviven los tres: `agile-coder-ops` y `system-architect` para forzar un modelo a mano, y `auto` para dejar que el clasificador decida.
 
 ## Puertos
 
@@ -62,10 +62,10 @@ Originalmente los workers corrian **vLLM 0.23.0**. Lo exploramos a fondo y termi
 - vLLM lee la config de los GGUF via `transformers`, cuyo loader GGUF solo soporta `qwen2/qwen3/qwen3_moe`. Las arquitecturas nuevas (`qwen3next`, `qwen3_5`) fallan con *"architecture not supported yet"*. Esto nos cerro la puerta a los modelos GGUF mas interesantes (incluidos los uncensored de la comunidad).
 
 **4. El `thinking` contaminaba las respuestas.**
-- Los modelos con razonamiento (Qwen3/Qwen3.6) metian el bloque `<think>...</think>` dentro del `content`, que se filtraba sucio a qwen-code.
+- Los modelos con razonamiento (Qwen3/Qwen3.6) metian el bloque `<think>...</think>` dentro del `content`, que se filtraba sucio al cliente.
 
 **5. Tool calling fragil.**
-- `Qwen2.5-Coder` no emitia tool calls en el formato esperado; hubo que escribir un parser custom de vLLM (`qwen25_native`) montado por volumen solo para que qwen-code pudiera ejecutar herramientas.
+- `Qwen2.5-Coder` no emitia tool calls en el formato esperado; hubo que escribir un parser custom de vLLM (`qwen25_native`) montado por volumen solo para poder ejecutar herramientas.
 
 **Comparativa final, mismo modelo (`Qwen3.6-35B-A3B`), mismo nodo (2x3090):**
 

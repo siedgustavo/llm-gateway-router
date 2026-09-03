@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Exporta el entorno para correr Claude Code ruteado por el gateway llm-gateway-router.
 # Agente principal -> Sonnet REAL (Anthropic via OAuth); Haiku y subagentes -> 'auto'
-# (clasificador local que rutea a qwen3-coder:30b / qwen3.6:35b on-premise).
+# (clasificador local que rutea a qwen3-coder-next:80b / qwen3.6:35b on-premise).
 set -eu
 
 script_path="${BASH_SOURCE:-$0}"

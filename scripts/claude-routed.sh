@@ -33,7 +33,7 @@ echo "* Gateway: ${ANTHROPIC_BASE_URL} (llm-gateway-router / k8s gpu-worker1)"
 echo "* Auth: Claude Code OAuth/subscription, sin API key"
 echo "* Principal (Sonnet): claude-sonnet-5 (Anthropic REAL)"
 echo "* Opus (a mano):      claude-opus-4-8  (Anthropic REAL)"
-echo "* Haiku + subagentes: auto -> clasificador local (qwen3-coder:30b / qwen3.6:35b)"
+echo "* Haiku + subagentes: auto -> clasificador local (qwen3-coder-next:80b / qwen3.6:35b)"
 echo ""
 
 exec claude "$@"

@@ -14,7 +14,6 @@ services:
       - ./config:/config
       - /dev/bus/usb:/dev/bus/usb
       - /etc/hostname:/host/etc/hostname:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -24,6 +23,13 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: octofan-prometheus
     restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -68,33 +74,41 @@ services:
     depends_on:
       - prometheus
 
-  # ARQUITECTURA v5 (2026-07-03): llama.cpp corre DIRECTO en octoserver (GPUs locales,
-  # sin split RPC). --no-mmap evita depender del page cache del host (solo 7.4GB RAM)
-  # para leer GGUF de hasta 18GB -- lee/sube a VRAM tensor por tensor en vez de mmapear
-  # el archivo completo. Reemplaza a los 4 llamacpp-rpc-gpuN + los llama-server de
-  # aiworker.core.sied.ar (dado de baja).
+  # ARQUITECTURA v7 (2026-07-06): vuelta a llama.cpp puro (server binario, sin RPC, sin
+  # Ollama, sin vLLM), un contenedor por GPU. Reemplaza tanto el intento anterior con
+  # vLLM (v6) como el intento intermedio con Ollama (probado y descartado el mismo dia:
+  # bug de finish_reason en streaming del provider ollama_chat de litellm, y el modelo
+  # de reemplazo -- gemma-4-abliterated -- no tenia fine-tune de codigo). Imagen
+  # ${*_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda} SIN pin de version: el bug de CUDA
+  # en MoE que forzaba pinear a b8857 (`MUL_MAT_ID failed`, ggml-org/llama.cpp#24937) no
+  # se reprodujo en el build actual (b9879) con el mismo modelo abliterated -- se
+  # confirmo con varios requests secuenciales reales sin crash. --no-mmap en los tres:
+  # el host tiene solo 7.4GB RAM, no se puede depender del page cache para GGUF de
+  # hasta 18GB.
   llamacpp-qwen3coder:
-    image: ${LLAMACPP_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:latest-cuda}
+    image: ${QWEN3CODER_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     container_name: octofan-llamacpp-qwen3coder
     restart: unless-stopped
-    entrypoint: ["/bin/bash"]
     command:
-      - -lc
-      - >
-        cd /usr/lib/x86_64-linux-gnu;
-        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
-          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
-        done;
-        exec /app/llama-server --host 0.0.0.0 --port 8080
-        --no-mmap
-        --cache-ram 0
-        --ctx-checkpoints 0
-        -m /models/${QWEN3CODER_GGUF:-qwen3coder-35b.gguf}
-        -ngl ${QWEN3CODER_GPU_LAYERS:-99}
-        --ctx-size ${QWEN3CODER_CTX_SIZE:-65536}
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "${QWEN3CODER_GPU_DEVICE:-0}"
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --alias
+      - ${QWEN3CODER_ALIAS:-qwen3coder:30b}
+      - --model
+      - /models/${QWEN3CODER_MODEL:-Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ4_XS.gguf}
+      - --ctx-size
+      - ${QWEN3CODER_CTX_SIZE:-65536}
+      - --n-gpu-layers
+      - ${QWEN3CODER_N_GPU_LAYERS:-999}
+      - --parallel
+      - ${QWEN3CODER_PARALLEL:-1}
+      - --batch-size
+      - ${QWEN3CODER_BATCH_SIZE:-512}
+      - --ubatch-size
+      - ${QWEN3CODER_UBATCH_SIZE:-128}
+      - --no-mmap
     volumes:
       - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
     ports:
@@ -104,35 +118,41 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${QWEN3CODER_GPU_DEVICE:-0}"]
+              device_ids: ["${QWEN3CODER_GPU:-0}"]
               capabilities: [gpu]
 
   llamacpp-qwen36-uncensored:
-    # PINNED a b8857 (commit a6cc43c, ultimo "bueno" antes de la regresion CUDA de MoE
-    # en issue ggml-org/llama.cpp#24937 -- crashea con este modelo en Ampere). El bug
-    # es del kernel CUDA, no de RPC, asi que el pin sigue aplicando en local.
-    image: ${QWEN36_UNCENSORED_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:b8857-cuda}
+    # LLAMA_ARG_CHAT_TEMPLATE_KWARGS (2026-07-06, fix): el nombre de env var correcto
+    # sigue la convencion LLAMA_ARG_<FLAG_EN_MAYUSCULAS> de llama.cpp -- confirmado con
+    # `llama-server --help`, que documenta "(env: LLAMA_ARG_CHAT_TEMPLATE_KWARGS)" para
+    # --chat-template-kwargs. Antes decia LLAMA_CHAT_TEMPLATE_KWARGS (sin ARG_), que
+    # llama.cpp ignora silenciosamente -- el thinking quedaba activo pese a la intencion
+    # de desactivarlo, y ensuciaba las respuestas a OpenCode con reasoning_content.
+    image: ${QWEN36_UNCENSORED_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     container_name: octofan-llamacpp-qwen36-uncensored
     restart: unless-stopped
-    entrypoint: ["/bin/bash"]
-    command:
-      - -lc
-      - >
-        cd /usr/lib/x86_64-linux-gnu;
-        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
-          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
-        done;
-        exec /app/llama-server --host 0.0.0.0 --port 8080
-        --no-mmap
-        --cache-ram 0
-        --ctx-checkpoints 0
-        --chat-template-kwargs '{"enable_thinking":false}'
-        -m /models/${QWEN36_UNCENSORED_GGUF:-qwen3.6-uncensored.gguf}
-        -ngl ${QWEN36_UNCENSORED_GPU_LAYERS:-99}
-        --ctx-size ${QWEN36_UNCENSORED_CTX_SIZE:-131072}
     environment:
-      NVIDIA_VISIBLE_DEVICES: "${QWEN36_UNCENSORED_GPU_DEVICE:-1}"
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      LLAMA_ARG_CHAT_TEMPLATE_KWARGS: '{"enable_thinking":false}'
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --alias
+      - ${QWEN36_UNCENSORED_ALIAS:-qwen3.6:35b}
+      - --model
+      - /models/${QWEN36_UNCENSORED_MODEL:-qwen3.6-uncensored.gguf}
+      - --ctx-size
+      - ${QWEN36_UNCENSORED_CTX_SIZE:-65536}
+      - --n-gpu-layers
+      - ${QWEN36_UNCENSORED_N_GPU_LAYERS:-999}
+      - --parallel
+      - ${QWEN36_UNCENSORED_PARALLEL:-1}
+      - --batch-size
+      - ${QWEN36_UNCENSORED_BATCH_SIZE:-512}
+      - --ubatch-size
+      - ${QWEN36_UNCENSORED_UBATCH_SIZE:-128}
+      - --no-mmap
     volumes:
       - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
     ports:
@@ -142,31 +162,46 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${QWEN36_UNCENSORED_GPU_DEVICE:-1}"]
+              device_ids: ["${QWEN36_UNCENSORED_GPU:-1}"]
               capabilities: [gpu]
 
+  # Vuelto al fine-tune comunitario "Llama-3.1-Pro-Coder-v1" (sin AWQ/safetensors
+  # disponible) al volver de vLLM a llama.cpp puro en la v7 -- ya no aplica la
+  # justificacion de la v6 de usar el AWQ oficial de Meta (esa migracion dependia de
+  # vLLM, que se dio de baja de nuevo).
+  #
+  # Ctx subido de 8192 a 49152 (2026-07-19): maximo empirico que entra en la 3060 12GB
+  # sin OOM (probado con un request real de ~42K tokens, VRAM ~10.7GB/12.3GB, ~1.5GB de
+  # margen). Motivo: pasa a ser tambien el destino del redirect del clasificador de
+  # permisos de auto-mode (ver gateway/callbacks.py) -- reemplaza a qwen3.6:35b, que
+  # puntuaba severity ~10x mas alto que Sonnet real para el mismo contenido. Si el
+  # request no entra ni en 49152, litellm cae a claude-sonnet-5 real via
+  # context_window_fallbacks (gateway/litellm-config.yaml), no falla ni se degrada la
+  # decision de seguridad.
   llamacpp-llama31-pro:
-    image: ${LLAMACPP_IMAGE:-ghcr.io/siedgustavo/llama-cpp-rpc:latest-cuda}
+    image: ${LLAMA31_PRO_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     container_name: octofan-llamacpp-llama31-pro
     restart: unless-stopped
-    entrypoint: ["/bin/bash"]
     command:
-      - -lc
-      - >
-        cd /usr/lib/x86_64-linux-gnu;
-        for lib in libllama libggml libggml-base libggml-cpu libggml-rpc libmtmd; do
-          [ -e "$$lib.so.0" ] || ln -s "$$lib.so" "$$lib.so.0";
-        done;
-        exec /app/llama-server --host 0.0.0.0 --port 8080
-        --no-mmap
-        --cache-ram 0
-        --ctx-checkpoints 0
-        -m /models/${LLAMA31_PRO_GGUF:-llama31-pro.gguf}
-        -ngl ${LLAMA31_PRO_GPU_LAYERS:-99}
-        --ctx-size ${LLAMA31_PRO_CTX_SIZE:-8192}
-    environment:
-      NVIDIA_VISIBLE_DEVICES: "${LLAMA31_PRO_GPU_DEVICE:-2}"
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --alias
+      - ${LLAMA31_PRO_ALIAS:-llama3.1:8b}
+      - --model
+      - /models/${LLAMA31_PRO_MODEL:-llama31-pro.gguf}
+      - --ctx-size
+      - ${LLAMA31_PRO_CTX_SIZE:-49152}
+      - --n-gpu-layers
+      - ${LLAMA31_PRO_N_GPU_LAYERS:-999}
+      - --parallel
+      - ${LLAMA31_PRO_PARALLEL:-1}
+      - --batch-size
+      - ${LLAMA31_PRO_BATCH_SIZE:-512}
+      - --ubatch-size
+      - ${LLAMA31_PRO_UBATCH_SIZE:-128}
+      - --no-mmap
     volumes:
       - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
     ports:
@@ -176,7 +211,72 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${LLAMA31_PRO_GPU_DEVICE:-2}"]
+              device_ids: ["${LLAMA31_PRO_GPU:-2}"]
+              capabilities: [gpu]
+
+  # Clasificador de riesgo dedicado para el permission-classifier de auto-mode de
+  # Claude Code (ver gateway/callbacks.py). Historia corta: 4 intentos previos fallaron
+  # -- qwen3.6:35b/qwen3-coder:30b/llama3.1:8b con el prompt original de Anthropic
+  # (severity ~10x mas alto que Sonnet, o sin discriminar nada) y Llama Guard 3 8B (el
+  # clasificador de seguridad dedicado de Meta) con una taxonomia propia inyectada, que
+  # mejoro el recall pero seguia con falsos positivos en operaciones rutinarias (git
+  # push normal, DELETE con WHERE) porque su entrenamiento es de moderacion de
+  # CONTENIDO conversacional, no de riesgo operativo de comandos.
+  #
+  # Lo que SI funciono (2026-07-19): un modelo de CODIGO (qwen3-coder:30b, probado en
+  # GPU0 antes de traerlo aca) con una taxonomia propia de riesgo devops + ejemplos
+  # trabajados por categoria (no alcanza con la regla en texto sola -- el modelo
+  # necesita ver el par contraste explicito, ej. "DELETE FROM x;" vs "DELETE FROM x
+  # WHERE y;", para aplicar la condicion calificante en vez de alucinar/pattern-matchear
+  # el verbo solo). 14/14 en el set de prueba de control. Ver gateway/callbacks.py para
+  # el prompt completo y el mapeo safe/unsafe+categoria -> <severity>/<category>.
+  #
+  # Qwen2.5-Coder-7B-Instruct (variante -128K de unsloth, rope scaling ya horneado en el
+  # GGUF) en vez de reusar qwen3-coder:30b de GPU0 -- esa GPU se reserva para coding real,
+  # no se quiere competir por sus slots. GPU3, la ultima libre. Cache K/V en q8_0 (con
+  # flash-attn) para contexto grande con margen holgado: este modelo es mucho mas chico
+  # (7B, GQA de 4 kv-heads) que los de 8B que veniamos usando, el KV cache pesa una
+  # fraccion de lo que pesaria en llama31-pro/llama-guard para el mismo contexto.
+  llamacpp-permission-classifier:
+    image: ${PERMISSION_CLASSIFIER_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
+    container_name: octofan-llamacpp-permission-classifier
+    restart: unless-stopped
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --alias
+      - ${PERMISSION_CLASSIFIER_ALIAS:-qwen2.5-coder:7b}
+      - --model
+      - /models/${PERMISSION_CLASSIFIER_MODEL:-Qwen2.5-Coder-7B-Instruct-128K-Q4_K_M.gguf}
+      - --ctx-size
+      - ${PERMISSION_CLASSIFIER_CTX_SIZE:-131072}
+      - --n-gpu-layers
+      - ${PERMISSION_CLASSIFIER_N_GPU_LAYERS:-999}
+      - --parallel
+      - ${PERMISSION_CLASSIFIER_PARALLEL:-1}
+      - --batch-size
+      - ${PERMISSION_CLASSIFIER_BATCH_SIZE:-512}
+      - --ubatch-size
+      - ${PERMISSION_CLASSIFIER_UBATCH_SIZE:-128}
+      - --flash-attn
+      - "on"
+      - --cache-type-k
+      - ${PERMISSION_CLASSIFIER_CACHE_TYPE:-q8_0}
+      - --cache-type-v
+      - ${PERMISSION_CLASSIFIER_CACHE_TYPE:-q8_0}
+      - --no-mmap
+    volumes:
+      - ${MODELS_DIR:-/opt/llamacpp/models}:/models:ro
+    ports:
+      - "${PERMISSION_CLASSIFIER_PORT:-8083}:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${PERMISSION_CLASSIFIER_GPU:-3}"]
               capabilities: [gpu]
 
 volumes:

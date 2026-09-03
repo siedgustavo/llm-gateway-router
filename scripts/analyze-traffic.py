@@ -14,7 +14,7 @@ import json
 import sys
 from collections import Counter, defaultdict
 
-TARGETS = {"llama3.1:8b", "agile-coder-ops", "system-architect", "qwen3-coder:30b", "qwen3.6:35b"}
+TARGETS = {"llama3.1:8b", "agile-coder-ops", "system-architect", "qwen3-coder-next:80b", "qwen3.6:35b"}
 SKIP_PREFIXES = ("<system-reminder>", "<local-command-caveat>", "<command-")
 
 
