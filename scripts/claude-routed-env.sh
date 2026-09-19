@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Exporta el entorno para correr Claude Code ruteado por el gateway llm-gateway-router.
-# Agente principal -> Sonnet REAL (Anthropic via OAuth); Haiku y subagentes -> 'auto'
-# (clasificador local que rutea a qwen3-coder-next:80b / qwen3.6:35b on-premise).
+# Agente principal -> Sonnet REAL (Anthropic via OAuth); Haiku y subagentes -> qwenflash
+# (qwen3.8-flash-next, on-premise en octoserver, sin clasificador intermedio).
 set -eu
 
 script_path="${BASH_SOURCE:-$0}"
@@ -45,8 +45,8 @@ export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer ${LITELLM_MASTER_KEY}
 # Tiers -> nombres de modelo reales del gateway.
 export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5"     # principal: Sonnet REAL
 export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8"       # disponible si se elige a mano
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="auto"                 # local via clasificador
-export CLAUDE_CODE_SUBAGENT_MODEL="auto"                    # local via clasificador (clave del ahorro)
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="qwen3.8-flash-next"   # local, on-premise
+export CLAUDE_CODE_SUBAGENT_MODEL="qwen3.8-flash-next"      # local, on-premise (clave del ahorro)
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"
 export API_TIMEOUT_MS="1200000"
 export BASH_DEFAULT_TIMEOUT_MS="300000"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Construye y pushea las 5 imagenes propias del gateway a ghcr.io/siedgustavo.
+# Construye y pushea las 4 imagenes propias del gateway a ghcr.io/siedgustavo.
 # Uso:
 #   scripts/build-images.sh [TAG]        # TAG por defecto: el short SHA de git + tambien :latest
 #   REGISTRY=ghcr.io/otro scripts/build-images.sh v1
@@ -29,10 +29,6 @@ build() {
 # LiteLLM (upstream + callbacks.py horneado)
 build llm-gateway-litellm \
   -f "${REPO_ROOT}/gateway/Dockerfile.litellm" "${REPO_ROOT}/gateway"
-
-# auto-router
-build llm-gateway-auto-router \
-  -f "${REPO_ROOT}/gateway/Dockerfile.auto-router" "${REPO_ROOT}/gateway"
 
 # permission-classifier-router
 build llm-gateway-permission-classifier \

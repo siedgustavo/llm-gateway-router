@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Lanza Claude Code apuntando al gateway llm-gateway-router (airouter:4000):
 #   - agente principal -> Sonnet REAL (Anthropic, OAuth de Claude Code)
-#   - Haiku + subagentes -> 'auto' (clasificador local, on-premise)
+#   - Haiku + subagentes -> qwen3.8-flash-next (local, on-premise, sin clasificador)
 # No modifica ~/.claude/settings.json; solo entorno temporal de este proceso.
 set -eu
 
@@ -33,7 +33,7 @@ echo "* Gateway: ${ANTHROPIC_BASE_URL} (llm-gateway-router / k8s gpu-worker1)"
 echo "* Auth: Claude Code OAuth/subscription, sin API key"
 echo "* Principal (Sonnet): claude-sonnet-5 (Anthropic REAL)"
 echo "* Opus (a mano):      claude-opus-4-8  (Anthropic REAL)"
-echo "* Haiku + subagentes: auto -> clasificador local (qwen3-coder-next:80b / qwen3.6:35b)"
+echo "* Haiku + subagentes: qwen3.8-flash-next (on-premise, octoserver)"
 echo ""
 
 exec claude "$@"

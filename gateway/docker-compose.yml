@@ -36,27 +36,6 @@ services:
     networks:
       - ai-core
 
-  auto-router:
-    image: python:3.12-slim
-    container_name: llm-gateway-auto-router
-    restart: unless-stopped
-    ports:
-      - "4001:4001"
-    environment:
-      GATEWAY_URL: http://litellm:4000
-      GATEWAY_KEY: ${LITELLM_MASTER_KEY:-sk-local-gateway-router}
-    volumes:
-      - ./auto_router.py:/app/auto_router.py:ro
-    working_dir: /app
-    command:
-      - sh
-      - -c
-      - "pip install --no-cache-dir fastapi uvicorn httpx >/dev/null 2>&1 && uvicorn auto_router:app --host 0.0.0.0 --port 4001"
-    depends_on:
-      - litellm
-    networks:
-      - ai-core
-
   # Clasificador de permisos de auto-mode 100% local -- reemplaza el chequeo que
   # Claude Code manda siempre a un modelo real de Anthropic. Ver docstring de
   # permission_classifier.py para el detalle completo de las variantes/formato.
