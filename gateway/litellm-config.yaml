@@ -132,9 +132,9 @@ model_list:
       timeout: 600
       stream_timeout: 600
 
-  - model_name: claude-opus-4-8
+  - model_name: claude-opus-5
     litellm_params:
-      model: anthropic/claude-opus-4-8
+      model: anthropic/claude-opus-5
       timeout: 600
       stream_timeout: 600
 
@@ -166,7 +166,7 @@ litellm_settings:
   model_group_settings:
     forward_client_headers_to_llm_api:
       - claude-sonnet-5
-      - claude-opus-4-8
+      - claude-opus-5
 
 router_settings:
   routing_strategy: latency-based-routing

@@ -57,11 +57,11 @@ class ProxyRequestSanitizer(CustomLogger):
 
 # Texto ancla del prompt del clasificador de permisos de auto-mode de Claude Code
 # (confirmado mirando gateway/logs/traffic.jsonl real: siempre llega como model=
-# claude-sonnet-5/claude-opus-4-8, msgs=2, con este texto en el primer mensaje).
+# claude-sonnet-5/claude-opus-5, msgs=2, con este texto en el primer mensaje).
 # Cubre las 5 variantes reales encontradas (severity fast/thinking, block fast/
 # thinking, revision de lote de subagente) -- todas comparten este preambulo.
 PERMISSION_CLASSIFIER_MARKER = "SPECIFIC action under review"
-PERMISSION_CLASSIFIER_SOURCE_MODELS = {"claude-sonnet-5", "claude-opus-4-8"}
+PERMISSION_CLASSIFIER_SOURCE_MODELS = {"claude-sonnet-5", "claude-opus-5"}
 PERMISSION_CLASSIFIER_TARGET_MODEL = "permission-classifier"
 
 

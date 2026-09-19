@@ -44,7 +44,7 @@ export ANTHROPIC_CUSTOM_HEADERS="x-litellm-api-key: Bearer ${LITELLM_MASTER_KEY}
 
 # Tiers -> nombres de modelo reales del gateway.
 export ANTHROPIC_DEFAULT_SONNET_MODEL="claude-sonnet-5"     # principal: Sonnet REAL
-export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-4-8"       # disponible si se elige a mano
+export ANTHROPIC_DEFAULT_OPUS_MODEL="claude-opus-5"       # disponible si se elige a mano
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="qwen3.8-flash-next"   # local, on-premise
 export CLAUDE_CODE_SUBAGENT_MODEL="qwen3.8-flash-next"      # local, on-premise (clave del ahorro)
 export CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY="1"

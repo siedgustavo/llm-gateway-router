@@ -24,8 +24,9 @@ Threshold real confirmado (extraido del binario compilado de Claude Code): sever
 
 Este router: 1) detecta la variante por el texto de cierre del ultimo mensaje,
 2) arma un prompt propio con nuestra taxonomia de riesgo devops (C1-C6, con ejemplos
-trabajados -- ver TAXONOMY) preservando el transcript real completo, 3) llama al
-modelo local dedicado (GPU3, ver workers/octoserver-llamacpp/docker-compose.yml),
+trabajados -- ver TAXONOMY) preservando el transcript real completo, 3) llama a
+qwenflash (qwen3.8-flash-next, litellm-config.yaml, ver PERMISSION_CLASSIFIER_MODEL
+mas abajo para el porque del cambio respecto al modelo dedicado original),
 4) traduce el veredicto safe/unsafe+categoria al formato exacto de tags que esa
 variante espera, para que el parser de Claude Code lo entienda igual que si hubiera
 venido de Anthropic.
@@ -41,7 +42,14 @@ from fastapi.responses import JSONResponse
 
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://litellm:4000")
 GATEWAY_KEY = os.environ.get("GATEWAY_KEY", "sk-local-gateway-router")
-CLASSIFIER_MODEL = os.environ.get("PERMISSION_CLASSIFIER_MODEL", "qwen2.5-coder:7b")
+# qwen2.5-coder:7b corria en un llama-server dedicado (GPU3 de octoserver) que se dio
+# de baja -- qwenflash (qwen3.8-flash-next, ya vive en litellm-config.yaml) lo
+# reemplaza. Calibrado 11/11 contra los mismos casos de control (ver memoria del
+# proyecto) con reasoning_effort=low; sin esto el modelo gasta el budget entero de
+# tokens pensando y nunca llega al veredicto (probado: reasoning solo ya consume
+# 200-800 tokens con "low").
+CLASSIFIER_MODEL = os.environ.get("PERMISSION_CLASSIFIER_MODEL", "qwen3.8-flash-next")
+CLASSIFIER_MAX_TOKENS = int(os.environ.get("PERMISSION_CLASSIFIER_MAX_TOKENS", "600"))
 
 # Severity que se le pone a la respuesta traducida. El limite real es 50 (confirmado
 # en el binario de Claude Code) asi que dejamos margen de sobra a cada lado.
@@ -258,9 +266,10 @@ async def chat_completions(request: Request):
                 json={
                     "model": CLASSIFIER_MODEL,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 250 if _VARIANT_CONFIG[variant]["thinking"] else 40,
+                    "max_tokens": CLASSIFIER_MAX_TOKENS,
                     "temperature": 0,
                     "stream": False,
+                    "chat_template_kwargs": {"reasoning_effort": "low"},
                 },
                 timeout=90,
             )

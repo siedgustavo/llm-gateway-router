@@ -32,7 +32,7 @@ echo "Claude Code routed mode:"
 echo "* Gateway: ${ANTHROPIC_BASE_URL} (llm-gateway-router / k8s gpu-worker1)"
 echo "* Auth: Claude Code OAuth/subscription, sin API key"
 echo "* Principal (Sonnet): claude-sonnet-5 (Anthropic REAL)"
-echo "* Opus (a mano):      claude-opus-4-8  (Anthropic REAL)"
+echo "* Opus (a mano):      claude-opus-5  (Anthropic REAL)"
 echo "* Haiku + subagentes: qwen3.8-flash-next (on-premise, octoserver)"
 echo ""
 

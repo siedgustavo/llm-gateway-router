@@ -28,11 +28,12 @@ proyecto para el contexto completo de por que existe y como esta armado.
 
 2. **Filtrar las llamadas al clasificador de permisos.** Dos formas de aparecer en el
    log, revisar ambas:
-   - `requested_model` == `qwen2.5-coder:7b` (el backend real que usa
-     `permission_classifier.py`) -- estas son las llamadas YA procesadas por el
+   - `requested_model` == `qwen3.8-flash-next` (el backend real que usa
+     `permission_classifier.py` desde que se dio de baja el modelo dedicado
+     qwen2.5-coder:7b, 2026-09-19) -- estas son las llamadas YA procesadas por el
      microservicio.
    - Mensajes con el texto ancla `"SPECIFIC action under review"` en `claude-sonnet-5`
-     o `claude-opus-4-8` -- si aparecen MUCHAS de estas, el redirect no esta
+     o `claude-opus-5` -- si aparecen MUCHAS de estas, el redirect no esta
      funcionando (revisar `callbacks.py`: el callback
      `permission_classifier_redirector` tiene que estar en la lista de
      `litellm_settings.callbacks` de `litellm-config.yaml` -- este exacto bug ya paso
@@ -51,16 +52,19 @@ proyecto para el contexto completo de por que existe y como esta armado.
      completo para analizarlo (puede requerir agregar deteccion nueva en
      `permission_classifier.py`).
 
-4. **Medir distribucion de veredictos.** Para las llamadas a `qwen2.5-coder:7b`,
-   parsear `response_text` (safe/unsafe + categoria) y contar por categoria. Señales
-   de alerta:
+4. **Medir distribucion de veredictos.** Para las llamadas a `qwen3.8-flash-next`
+   (filtradas por venir del permission-classifier, no confundir con trafico normal de
+   subagentes/Haiku que usan el mismo modelo), parsear `response_text` (safe/unsafe +
+   categoria) y contar por categoria. Señales de alerta:
    - Un severity/categoria repetido identico muchas veces seguidas con contenido
      DISTINTO (posible signo de que el modelo dejo de discriminar, como paso con
      qwen3-coder:30b sin ejemplos trabajados).
    - Aparicion de `"Local permission classifier unavailable"` o severity=80 sin
-     categoria clara -- el fail-safe se activo, algo fallo (ver `docker logs
-     llm-gateway-permission-classifier-router` y `docker ps` en octoserver para
-     `octofan-llamacpp-permission-classifier` en GPU3).
+     categoria clara -- el fail-safe se activo, algo fallo (ver `kubectl -n inference
+     logs deployment/permission-classifier-router`, y en octoserver
+     `docker ps --filter name=qwen38flash` / `docker logs qwen38flash` -- qwenflash
+     corre fuera del cluster, container docker nativo en el host, no es un Deployment
+     de k8s).
 
 5. **Spot-check de calidad.** Elegir 3-5 casos al azar del muestreo, mostrar la
    accion real evaluada + el veredicto, y juzgar a ojo si parecen razonables (no hace
