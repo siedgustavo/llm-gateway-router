@@ -15,6 +15,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import Response
 from mcp.server.sse import SseServerTransport
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
@@ -274,12 +275,20 @@ async def handle_sse(request):
         )
     return Response()
 
+# Streamable HTTP transport (/mcp): required by clients like opencode v2 and
+# Open WebUI that dropped legacy SSE support. /sse + /messages/ stay for existing clients.
+session_manager = StreamableHTTPSessionManager(app, stateless=True)
+
 routes = [
     Route("/sse", endpoint=handle_sse, methods=["GET"]),
     Mount("/messages/", app=sse.handle_post_message),
+    Mount("/mcp", app=session_manager.handle_request),
 ]
 
-starlette_app = Starlette(routes=routes)
+starlette_app = Starlette(
+    routes=routes,
+    lifespan=lambda _: session_manager.run(),
+)
 
 if __name__ == "__main__":
     ensure_collection()
