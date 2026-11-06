@@ -47,8 +47,9 @@ Decision operativa vigente (actualizada 2026-09-02):
   Postgres, Redis y MCP viven ahora en pods del namespace `inference`
   (`memory-mcp`, `qdrant-0`, `postgres-0`, `redis-0`, `ollama-memory-0`).
 - El MCP de memoria corre como deployment `memory-mcp` in-cluster y se expone por el Ingress MCP
-  del namespace `inference` (`mcp-ingress.yaml`). El servidor local `mcp/memory_mcp_server.py`
-  queda como herramienta de desarrollo.
+  del namespace `inference` (`mcp-ingress.yaml`). Desde 2026-11-06 su codigo vive en el repo
+  propio `siedgustavo/memory-mcp` (clone en `~/repos/mcp/memory-mcp`), igual que `searxng-mcp`;
+  en `~/repos/mcp/` vive tambien `browser-scraper-mcp` (movido desde `reconlab/`).
 
 Modelos virtuales previstos:
 
@@ -71,7 +72,9 @@ Estructura creada:
 - `gateway/callbacks.py`: callbacks de LiteLLM (sanitizador de requests, redirector a permission-classifier, traffic logger).
 - `gateway/Dockerfile.*`: imagenes propias de litellm, auto-router y permission-classifier (build con `scripts/build-images.sh`).
 - `gateway/searxng/settings.yml`: config de SearXNG desplegada en el namespace `inference`.
-- `mcp/`: servidor MCP de memoria (stdio y SSE) + MCP SSE de SearXNG.
+- `mcp/` (RETIRADO 2026-11-06): los servidores MCP pasaron a repos propios en
+  `~/repos/mcp/` (GitHub: `siedgustavo/memory-mcp`, `siedgustavo/searxng-mcp`). Las variantes
+  stdio y los `setup-*.sh` quedaron en `~/repos/mcp/.archive/llm-gateway-router-mcp/`.
 - `docker/llama-cpp-rpc/`: build propio de llama.cpp-rpc (fix grammar con muchas tools).
 - `workers/octoserver-llamacpp/`: stack llama.cpp del host octoserver (fuera de k8s).
 - `workers/aiworker-llamacpp/`, `workers/corsario-worker1/`, `workers/aiworker-worker2/`: stacks historicos de workers.

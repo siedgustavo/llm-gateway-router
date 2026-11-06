@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Construye y pushea las 4 imagenes propias del gateway a ghcr.io/siedgustavo.
+# Construye y pushea las imagenes propias del gateway a ghcr.io/siedgustavo.
+# Los MCP (memory, searxng) ya no se buildean aqui: tienen repo e imagen propios
+# en ~/repos/mcp/ con su propio build.sh (2026-11-06).
 # Uso:
 #   scripts/build-images.sh [TAG]        # TAG por defecto: el short SHA de git + tambien :latest
 #   REGISTRY=ghcr.io/otro scripts/build-images.sh v1
@@ -33,15 +35,6 @@ build llm-gateway-litellm \
 # permission-classifier-router
 build llm-gateway-permission-classifier \
   -f "${REPO_ROOT}/gateway/Dockerfile.permission-classifier" "${REPO_ROOT}/gateway"
-
-# memory-mcp (mcp/Dockerfile, SERVER_FILE por defecto = memory_mcp_server_sse.py)
-build llm-gateway-memory-mcp \
-  -f "${REPO_ROOT}/mcp/Dockerfile" "${REPO_ROOT}/mcp"
-
-# searxng-mcp (mismo Dockerfile, otro SERVER_FILE)
-build llm-gateway-searxng-mcp \
-  --build-arg SERVER_FILE=searxng_mcp_server_sse.py \
-  -f "${REPO_ROOT}/mcp/Dockerfile" "${REPO_ROOT}/mcp"
 
 echo
 echo "Listo. Tag construido: ${TAG}"
